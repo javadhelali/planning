@@ -1,0 +1,10 @@
+fastapi
+python-multipart
+uvicorn
+pydantic
+pydantic[email]
+pydantic-settings
+asyncpg
+httpx
+redis
+socksio
