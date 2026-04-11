@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     # Redis
     redis_url: str = "redis://127.0.0.1:6034/0"
+    auth_session_ttl_seconds: int = 60 * 60 * 24 * 7
 
     # CORS
     allowed_origins: list[str] = ["http://localhost:3038", "http://212.80.24.87:3038"]

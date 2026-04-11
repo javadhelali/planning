@@ -1,3 +1,13 @@
+create table if not exists users (
+  id bigserial primary key,
+  username text not null unique,
+  password_hash text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists users_username_idx on users (username);
+
 create table if not exists tasks (
   id bigserial primary key,
   title text not null,

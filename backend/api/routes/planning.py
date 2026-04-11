@@ -1,9 +1,10 @@
 from datetime import date, datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
+from api.dependencies.auth import require_authenticated_user
 from repositories.tasks import (
     clear_completed_tasks,
     create_task,
@@ -58,12 +59,18 @@ def resolved_completed_at(status_value: TaskStatus) -> datetime | None:
 
 
 @router.get("/tasks", response_model=list[TaskResponse])
-async def get_tasks(status_filter: TaskStatus | None = Query(default=None, alias="status")):
+async def get_tasks(
+    status_filter: TaskStatus | None = Query(default=None, alias="status"),
+    _: dict = Depends(require_authenticated_user),
+):
     return await list_tasks(status_filter)
 
 
 @router.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
-async def create_task_route(payload: TaskCreateRequest):
+async def create_task_route(
+    payload: TaskCreateRequest,
+    _: dict = Depends(require_authenticated_user),
+):
     task = await create_task(
         title=payload.title,
         notes=payload.notes,
@@ -77,13 +84,17 @@ async def create_task_route(payload: TaskCreateRequest):
 
 
 @router.delete("/tasks/completed", response_model=ClearCompletedResponse)
-async def clear_completed_tasks_route():
+async def clear_completed_tasks_route(_: dict = Depends(require_authenticated_user)):
     deleted_count = await clear_completed_tasks()
     return {"deleted_count": deleted_count}
 
 
 @router.put("/tasks/{task_id}", response_model=TaskResponse)
-async def update_task_route(task_id: int, payload: TaskUpdateRequest):
+async def update_task_route(
+    task_id: int,
+    payload: TaskUpdateRequest,
+    _: dict = Depends(require_authenticated_user),
+):
     task = await update_task(
         task_id=task_id,
         title=payload.title,
@@ -98,7 +109,7 @@ async def update_task_route(task_id: int, payload: TaskUpdateRequest):
 
 
 @router.delete("/tasks/{task_id}", response_model=DeleteTaskResponse)
-async def delete_task_route(task_id: int):
+async def delete_task_route(task_id: int, _: dict = Depends(require_authenticated_user)):
     deleted = await delete_task(task_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Task not found")

@@ -8,8 +8,9 @@
 - Each file maps to one resource or feature (e.g., `users.py`, `items.py`)
 - **Each route file defines its own Pydantic schemas** (request/response models) at the top or in a dedicated section — no separate `schemas/` folder
 - Panel route files must be placed directly under `panel_pages/`, and site service route files must be placed directly under `site_services/`
-- Every new route file under `panel_pages/` or `site_services/` must be imported and added to the `routers` list in that folder's `__init__.py`
-- Shared backend layers are top-level folders: `repositories/`, `core/`, `utilities/`, and `workers/`
+- Every new route file under `panel_pages/` or `site_services/` must be imported and included from `routes/router.py`
+- `routes/router.py` is the single router aggregator for the backend app and is imported from `main.py`
+- Route dependency providers live in `routes/dependencies/`
 - Routes validate input, call `core/`, `repositories/`, `external/`, or `utilities/`, and return a response
 - Response shaping/serialization for HTTP output belongs in routes files
 - Routes may access `databases/` directly only for rare, one-time queries that are tightly scoped to that route.
@@ -39,6 +40,22 @@
 - `core/` must not be a pass-through/proxy layer; if a function only forwards a single repository call without added business rules, keep that call in the route/worker
 - `core/` must not handle HTTP serialization/response formatting
 - If logic is used by more than one route or worker, it belongs here
+
+## `routes/dependencies/`
+
+**Purpose:** Route-layer dependency injection helpers (auth extraction, permission checks, request-scoped context).
+
+- Keep reusable FastAPI dependency functions here
+- Import dependencies directly from their module files (example: `from routes.dependencies.auth import get_required_user_id`)
+- Do not re-export dependency functions from `routes/dependencies/__init__.py`
+
+## Import Style Rules
+
+- Import from `core/` modules directly (example: `from core.users import x`)
+- Import from `routes/dependencies/` modules directly (example: `from routes.dependencies.auth import y`)
+- Import from `repositories/`, `utilities/`, `external/`, and `workers/` modules directly as well (no package-level function re-exports)
+- Keep `__init__.py` files as package markers only; do not import/re-export functions, classes, or constants in them
+- Router composition must live only in `routes/router.py`
 
 ## `utilities/`
 
@@ -78,6 +95,16 @@
 - Keep task functions thin — orchestrate, don't implement. Complex logic belongs in `core/`
 - Log extensively — workers run without HTTP context, so debugging relies on logs
 
+## `scripts/`
+
+**Purpose:** One-time scripts and notebooks for data analysis, backfills, and ad-hoc maintenance tasks.
+
+- This folder is for `.ipynb` notebooks and `.py` scripts that are not part of the request/worker runtime path
+- `scripts/` can reference `core/`, `repositories/`, `external/`, `utilities/`, and `databases/`
+- `scripts/` must not import from `routes/` (avoid coupling to HTTP layer)
+- No other folder may import from or reference `scripts/` (strict one-way boundary)
+- If script logic becomes reusable or runtime-critical, move it into `core/` and keep script files as thin callers
+
 ## Dependency Rules (Import Direction)
 
 ```
@@ -101,6 +128,13 @@ workers/ →  core/  →  repositories/  →  databases/
   ├→ external/
   ├→ databases/ (rare, one-time)
   └→ utilities/
+
+scripts/ → core/ → repositories/ → databases/
+  ↓          ↓           ↓
+  ├→ repositories/    external/
+  ├→ external/
+  ├→ utilities/
+  └→ databases/ (analysis and one-time)
 ```
 
 | ✅ Allowed | ❌ Forbidden |
@@ -111,5 +145,7 @@ workers/ →  core/  →  repositories/  →  databases/
 | `core` → `databases` (rare, one-time queries only) | `workers` → `routes` |
 | `workers` → `core`, `repositories`, `external`, `utilities` | `external` → `routes` |
 | `workers` → `databases` (rare, one-time queries only) | `databases` → `routes`, `core`, `workers`, `repositories` |
+| `scripts` → `core`, `repositories`, `external`, `utilities`, `databases` | Any layer → `scripts` |
 | `repositories` → `databases`, `external`, `utilities` | `repositories` → `repositories` (direct cross-repo imports) |
+| `scripts` is never referenced by runtime layers | `scripts` → `routes` |
 | Any layer → `utilities` | Any layer → `routes` |
