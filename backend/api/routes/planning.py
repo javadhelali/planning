@@ -35,6 +35,7 @@ class TaskUpdateRequest(BaseModel):
 
 class TaskResponse(BaseModel):
     id: int
+    user_id: int
     title: str
     notes: str | None
     status: TaskStatus
@@ -61,17 +62,18 @@ def resolved_completed_at(status_value: TaskStatus) -> datetime | None:
 @router.get("/tasks", response_model=list[TaskResponse])
 async def get_tasks(
     status_filter: TaskStatus | None = Query(default=None, alias="status"),
-    _: dict = Depends(require_authenticated_user),
+    user: dict = Depends(require_authenticated_user),
 ):
-    return await list_tasks(status_filter)
+    return await list_tasks(user["id"], status_filter)
 
 
 @router.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_task_route(
     payload: TaskCreateRequest,
-    _: dict = Depends(require_authenticated_user),
+    user: dict = Depends(require_authenticated_user),
 ):
     task = await create_task(
+        user_id=user["id"],
         title=payload.title,
         notes=payload.notes,
         status=payload.status,
@@ -84,8 +86,8 @@ async def create_task_route(
 
 
 @router.delete("/tasks/completed", response_model=ClearCompletedResponse)
-async def clear_completed_tasks_route(_: dict = Depends(require_authenticated_user)):
-    deleted_count = await clear_completed_tasks()
+async def clear_completed_tasks_route(user: dict = Depends(require_authenticated_user)):
+    deleted_count = await clear_completed_tasks(user["id"])
     return {"deleted_count": deleted_count}
 
 
@@ -93,10 +95,11 @@ async def clear_completed_tasks_route(_: dict = Depends(require_authenticated_us
 async def update_task_route(
     task_id: int,
     payload: TaskUpdateRequest,
-    _: dict = Depends(require_authenticated_user),
+    user: dict = Depends(require_authenticated_user),
 ):
     task = await update_task(
         task_id=task_id,
+        user_id=user["id"],
         title=payload.title,
         notes=payload.notes,
         status=payload.status,
@@ -109,8 +112,8 @@ async def update_task_route(
 
 
 @router.delete("/tasks/{task_id}", response_model=DeleteTaskResponse)
-async def delete_task_route(task_id: int, _: dict = Depends(require_authenticated_user)):
-    deleted = await delete_task(task_id)
+async def delete_task_route(task_id: int, user: dict = Depends(require_authenticated_user)):
+    deleted = await delete_task(task_id, user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Task not found")
     return {"deleted": True}

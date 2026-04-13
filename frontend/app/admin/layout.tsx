@@ -17,9 +17,9 @@ export default async function AdminLayout({
   return (
     <div className="min-h-screen" style={{ backgroundColor: "var(--background)", color: "var(--foreground)" }}>
       <AdminNavbar />
-      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-6 px-6 py-8 md:grid-cols-[220px_1fr]">
+      <div className="content-width mx-auto grid grid-cols-1 gap-6 px-4 py-8 sm:px-6 md:grid-cols-[240px_1fr]">
         <AdminSidebar />
-        <section>{children}</section>
+        <section className="surface-card rounded-[28px] p-6 sm:p-7">{children}</section>
       </div>
     </div>
   );

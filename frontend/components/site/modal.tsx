@@ -12,23 +12,56 @@ type ModalProps = {
 
 export default function Modal({ isOpen, title, description, onClose, children }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+
+      if (event.key !== "Tab" || !dialogRef.current) return;
+
+      const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+
+      if (focusable.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const activeElement = document.activeElement;
+
+      if (event.shiftKey && activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
 
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     document.addEventListener("keydown", handleKeyDown);
+
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
+      previousFocusRef.current?.focus();
     };
   }, [isOpen, onClose]);
 
   useEffect(() => {
     if (!isOpen) return;
-    dialogRef.current?.focus();
+    const nextFocus = dialogRef.current?.querySelector<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    );
+    nextFocus?.focus();
   }, [isOpen]);
 
   useEffect(() => {
@@ -59,8 +92,7 @@ export default function Modal({ isOpen, title, description, onClose, children }:
         aria-labelledby="modal-title"
         aria-describedby={description ? "modal-description" : undefined}
         tabIndex={-1}
-        className="relative z-10 w-full max-w-xl rounded-2xl border p-5 shadow-2xl sm:p-6"
-        style={{ borderColor: "var(--card-border)", backgroundColor: "var(--card)" }}
+        className="surface-card relative z-10 w-full max-w-xl rounded-3xl p-5 sm:p-6"
       >
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
@@ -68,7 +100,7 @@ export default function Modal({ isOpen, title, description, onClose, children }:
               {title}
             </h2>
             {description ? (
-              <p id="modal-description" className="mt-1 text-sm" style={{ color: "var(--muted-foreground)" }}>
+              <p id="modal-description" className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
                 {description}
               </p>
             ) : null}
@@ -76,8 +108,7 @@ export default function Modal({ isOpen, title, description, onClose, children }:
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border px-2 py-1 text-sm"
-            style={{ borderColor: "var(--card-border)" }}
+            className="button-secondary rounded-xl px-3 py-2 text-sm font-medium"
           >
             Close
           </button>

@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 
 type ThemeMode = "light" | "dark";
+type ThemeToggleProps = {
+  compact?: boolean;
+};
+
 const THEME_STORAGE_KEY = "planning_theme";
 
 const isThemeMode = (value: string | null): value is ThemeMode =>
@@ -26,7 +30,7 @@ const resolveCurrentMode = (): ThemeMode => {
   return "light";
 };
 
-export default function ThemeToggle() {
+export default function ThemeToggle({ compact = false }: ThemeToggleProps) {
   const [mode, setMode] = useState<ThemeMode>(resolveCurrentMode);
 
   useEffect(() => {
@@ -44,11 +48,12 @@ export default function ThemeToggle() {
     <button
       type="button"
       onClick={toggleTheme}
-      className="rounded-full border px-4 py-2 text-sm font-medium transition"
-      style={{ borderColor: "var(--card-border)", color: "var(--foreground)" }}
+      className={`button-secondary rounded-full text-sm font-medium ${compact ? "h-11 w-11 px-0 py-0" : "px-4 py-2"}`}
       aria-pressed={mode === "dark"}
+      aria-label={`Switch to ${mode === "dark" ? "light" : "dark"} mode`}
+      title={compact ? (mode === "dark" ? "Use light mode" : "Use dark mode") : undefined}
     >
-      {mode === "dark" ? "Light mode" : "Dark mode"}
+      {compact ? (mode === "dark" ? "L" : "D") : mode === "dark" ? "Use light mode" : "Use dark mode"}
     </button>
   );
 }

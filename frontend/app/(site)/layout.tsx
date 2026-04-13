@@ -1,7 +1,7 @@
+import AppShell from "@/components/site/app-shell";
 import Footer from "@/components/site/footer";
 import Header from "@/components/site/header";
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 
 export default async function SiteRouteLayout({
   children,
@@ -10,13 +10,18 @@ export default async function SiteRouteLayout({
 }>) {
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get("planning_session")?.value ?? null;
-  if (!sessionToken) {
-    redirect("/login");
+
+  if (sessionToken) {
+    return (
+      <div className="min-h-screen" style={{ backgroundColor: "var(--background)", color: "var(--foreground)" }}>
+        <AppShell>{children}</AppShell>
+      </div>
+    );
   }
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "var(--background)", color: "var(--foreground)" }}>
-      <Header isAuthenticated />
+      <Header isAuthenticated={false} />
       {children}
       <Footer />
     </div>

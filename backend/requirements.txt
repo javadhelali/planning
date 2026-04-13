@@ -8,3 +8,4 @@ asyncpg
 httpx
 redis
 socksio
+mcp

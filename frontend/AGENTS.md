@@ -4,7 +4,7 @@ This document defines rules for the Next.js frontend in `frontend/`.
 
 ## Example Folder Structure
 
-Note: the structure below is an example for a hypothetical blog or shop website. Use it as a pattern for separation of concerns, not as a strict requirement to keep the exact same route names.
+Note: the structure below is an example for a hypothetical blog or shop website. Use it as a pattern for separation of concerns, not as a strict requirement to keep the exact same route names. but the folder structure is important.
 
 ```text
 frontend/
@@ -63,6 +63,7 @@ frontend/
 ## Routing Folder Rules
 
 - In `app/(site)/` and `app/admin/`, only Next.js route files are allowed.
+- All site routes should be in `app/(site)/` and all admin routes should be in `app/admin/`.
 - Allowed route files include `page.tsx`, `layout.tsx`, `loading.tsx`, `error.tsx`, and other Next.js route-specific files.
 - Do not place reusable components, custom helpers, or service files inside route folders.
 
@@ -78,7 +79,9 @@ frontend/
 
 - Put site reusable UI in `components/site/`.
 - Put admin reusable UI in `components/admin/`.
-- Keep components presentational and pass data through props whenever possible.
+- Components in `components/` must be reusable UI elements (for example: button, card, modal, input, table), not page-specific content wrappers.
+- Do not move the main content structure of a page into a single "page content" component.
+- Keep components presentational, reusable, ui elements and pass data through props whenever possible.
 
 ## UX Design Rules
 
@@ -99,5 +102,6 @@ frontend/
 - [ ] Only `page.tsx` files call services/APIs
 - [ ] `app/utilities/api.ts` has only general helpers (like `get`, `post`)
 - [ ] Reusable UI is in `components/site/` or `components/admin/`
+- [ ] `components/` does not contain page-specific content wrappers
 - [ ] Each page keeps primary goals prominent and secondary flows progressively disclosed
 - [ ] Forms, feedback states, responsiveness, and accessibility baseline are addressed

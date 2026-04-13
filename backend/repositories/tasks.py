@@ -5,6 +5,7 @@ from databases.postgres import db
 
 TASK_COLUMNS = """
 id,
+user_id,
 title,
 notes,
 status,
@@ -15,18 +16,20 @@ updated_at
 """
 
 
-async def list_tasks(status: str | None = None) -> list[dict]:
+async def list_tasks(user_id: int, status: str | None = None) -> list[dict]:
     query = f"""
         select {TASK_COLUMNS}
         from tasks
-        where ($1::text is null or status = $1)
+        where user_id = $1
+          and ($2::text is null or status = $2)
         order by created_at desc
     """
-    rows = await db.execute(query, status)
+    rows = await db.execute(query, user_id, status)
     return rows or []
 
 
 async def create_task(
+    user_id: int,
     title: str,
     notes: str | None,
     status: str,
@@ -34,11 +37,11 @@ async def create_task(
     completed_at: datetime | None,
 ) -> dict | None:
     query = f"""
-        insert into tasks (title, notes, status, due_date, completed_at)
-        values ($1, $2, $3, $4, $5)
+        insert into tasks (user_id, title, notes, status, due_date, completed_at)
+        values ($1, $2, $3, $4, $5, $6)
         returning {TASK_COLUMNS}
     """
-    rows = await db.execute(query, title, notes, status, due_date, completed_at)
+    rows = await db.execute(query, user_id, title, notes, status, due_date, completed_at)
     if not rows:
         return None
     return rows[0]
@@ -46,6 +49,7 @@ async def create_task(
 
 async def update_task(
     task_id: int,
+    user_id: int,
     title: str,
     notes: str | None,
     status: str,
@@ -55,28 +59,29 @@ async def update_task(
     query = f"""
         update tasks
         set
-            title = $2,
-            notes = $3,
-            status = $4,
-            due_date = $5,
-            completed_at = $6,
+            title = $3,
+            notes = $4,
+            status = $5,
+            due_date = $6,
+            completed_at = $7,
             updated_at = now()
         where id = $1
+          and user_id = $2
         returning {TASK_COLUMNS}
     """
-    rows = await db.execute(query, task_id, title, notes, status, due_date, completed_at)
+    rows = await db.execute(query, task_id, user_id, title, notes, status, due_date, completed_at)
     if not rows:
         return None
     return rows[0]
 
 
-async def delete_task(task_id: int) -> bool:
-    query = "delete from tasks where id = $1 returning id"
-    deleted_rows = await db.execute(query, task_id)
+async def delete_task(task_id: int, user_id: int) -> bool:
+    query = "delete from tasks where id = $1 and user_id = $2 returning id"
+    deleted_rows = await db.execute(query, task_id, user_id)
     return bool(deleted_rows)
 
 
-async def clear_completed_tasks() -> int:
-    query = "delete from tasks where status = 'done' returning id"
-    deleted_rows = await db.execute(query)
+async def clear_completed_tasks(user_id: int) -> int:
+    query = "delete from tasks where user_id = $1 and status = 'done' returning id"
+    deleted_rows = await db.execute(query, user_id)
     return len(deleted_rows or [])

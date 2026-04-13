@@ -1,0 +1,3 @@
+[mcp_servers.postgres]
+command = "bash"
+args = ["backend/MCP/run_postgres_mcp.sh"]

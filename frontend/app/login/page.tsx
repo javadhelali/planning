@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 
 import { post } from "../utilities/api";
@@ -28,7 +29,7 @@ export default function LoginPage() {
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState("Sign in to continue to your workspace.");
+  const [message, setMessage] = useState<string | null>("Sign in to continue to your workspace.");
 
   useEffect(() => {
     const token = window.localStorage.getItem(SESSION_STORAGE_KEY);
@@ -92,78 +93,105 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="mx-auto flex min-h-[calc(100vh-120px)] w-full max-w-md items-center px-6 py-12">
-      <section
-        className="w-full rounded-2xl border p-6"
-        style={{ borderColor: "var(--card-border)", backgroundColor: "var(--card)" }}
-      >
-        <h1 className="text-2xl font-semibold">Login</h1>
-        <p className="mt-2 text-sm" style={{ color: "var(--muted-foreground)" }}>
-          {message}
-        </p>
-
-        <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-          <div>
-            <label htmlFor="username" className="text-sm font-medium">
-              Username
-            </label>
-            <input
-              id="username"
-              type="text"
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              className="mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none"
-              style={{ borderColor: "var(--card-border)", backgroundColor: "var(--background)" }}
-              placeholder="your-username"
-              minLength={3}
-              maxLength={64}
-              required
-            />
+    <main className="content-width mx-auto px-4 py-10 sm:px-6 sm:py-14">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_440px]">
+        <section className="surface-card rounded-[28px] px-6 py-8 sm:px-8 sm:py-10">
+          <span
+            className="inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]"
+            style={{ backgroundColor: "var(--accent-tint)", color: "var(--accent)" }}
+          >
+            Planning
+          </span>
+          <h1 className="mt-5 text-4xl font-semibold tracking-tight sm:text-5xl">
+            Sign in to a cleaner task workflow.
+          </h1>
+          <p className="mt-4 max-w-xl text-base leading-7" style={{ color: "var(--foreground-muted)" }}>
+            Keep your day focused with a minimal task list, safer updates, and a Material Design 3-inspired visual system.
+          </p>
+          <div className="mt-8 grid gap-3 sm:grid-cols-3">
+            {[
+              ["Focused lists", "Keep open work visible without clutter."],
+              ["Clear status updates", "Review changes before they are saved."],
+              ["Material surfaces", "Readable, low-noise UI inspired by Material Design 3."],
+            ].map(([title, description]) => (
+              <article key={title} className="surface-subtle rounded-3xl p-4">
+                <h2 className="text-sm font-semibold">{title}</h2>
+                <p className="mt-2 text-sm leading-6" style={{ color: "var(--foreground-muted)" }}>
+                  {description}
+                </p>
+              </article>
+            ))}
           </div>
+          <Link href="/" className="button-ghost mt-8 inline-flex rounded-full px-4 py-2 text-sm font-medium">
+            Back to overview
+          </Link>
+        </section>
 
-          <div>
-            <label htmlFor="password" className="text-sm font-medium">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none"
-              style={{ borderColor: "var(--card-border)", backgroundColor: "var(--background)" }}
-              placeholder="Enter your password"
-              minLength={8}
-              maxLength={128}
-              required
-            />
-          </div>
+        <section className="surface-card rounded-[28px] p-6 sm:p-7">
+          <h2 className="text-2xl font-semibold">{isRegisterMode ? "Create account" : "Sign in"}</h2>
+          <p className="mt-2 text-sm leading-6" style={{ color: "var(--foreground-muted)" }}>
+            {message}
+          </p>
+
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <div>
+              <label htmlFor="username" className="text-sm font-semibold">
+                Username
+              </label>
+              <input
+                id="username"
+                type="text"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                className="field mt-2 rounded-2xl px-4 py-3 text-sm"
+                placeholder="your-username"
+                minLength={3}
+                maxLength={64}
+                required
+              />
+            </div>
+
+            <div>
+              <label htmlFor="password" className="text-sm font-semibold">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                className="field mt-2 rounded-2xl px-4 py-3 text-sm"
+                placeholder="Enter your password"
+                minLength={8}
+                maxLength={128}
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="button-primary w-full rounded-2xl px-4 py-3 text-sm font-semibold"
+            >
+              {isSubmitting ? busyLabel : submitLabel}
+            </button>
+          </form>
 
           <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full rounded-xl px-3 py-2 text-sm font-medium text-white"
-            style={{ backgroundColor: "var(--accent)" }}
+            type="button"
+            onClick={toggleMode}
+            className="button-ghost mt-3 rounded-full px-4 py-2 text-sm font-medium"
           >
-            {isSubmitting ? busyLabel : submitLabel}
+            {isRegisterMode ? "Already have an account? Sign in" : "Need an account? Create one"}
           </button>
-        </form>
 
-        <button
-          type="button"
-          onClick={toggleMode}
-          className="mt-3 text-sm underline"
-          style={{ color: "var(--muted-foreground)" }}
-        >
-          {isRegisterMode ? "Already have an account? Sign in" : "Need an account? Create one"}
-        </button>
-
-        {error ? (
-          <p className="mt-3 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: "#ef4444", color: "#ef4444" }} aria-live="polite">
-            {error}
-          </p>
-        ) : null}
-      </section>
+          {error ? (
+            <p className="notice-error mt-4 rounded-3xl px-4 py-3 text-sm" aria-live="polite">
+              {error}
+            </p>
+          ) : null}
+        </section>
+      </div>
     </main>
   );
 }
