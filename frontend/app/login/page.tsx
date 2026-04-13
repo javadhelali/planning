@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 
@@ -122,7 +123,8 @@ export default function LoginPage() {
               </article>
             ))}
           </div>
-          <Link href="/" className="button-ghost mt-8 inline-flex rounded-full px-4 py-2 text-sm font-medium">
+          <Link href="/" className="button-ghost mt-8 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium">
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             Back to overview
           </Link>
         </section>

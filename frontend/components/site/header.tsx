@@ -1,5 +1,6 @@
 "use client";
 
+import { LogIn, LogOut } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -57,11 +58,13 @@ export default function Header({ isAuthenticated }: HeaderProps) {
             );
           })}
           {isAuthenticated ? (
-            <Link href="/logout" className="button-secondary rounded-full px-4 py-2 font-medium">
+            <Link href="/logout" className="button-secondary inline-flex items-center gap-2 rounded-full px-4 py-2 font-medium">
+              <LogOut className="h-4 w-4" aria-hidden="true" />
               Sign out
             </Link>
           ) : (
-            <Link href="/login" className="button-primary rounded-full px-4 py-2 font-medium">
+            <Link href="/login" className="button-primary inline-flex items-center gap-2 rounded-full px-4 py-2 font-medium">
+              <LogIn className="h-4 w-4" aria-hidden="true" />
               Sign in
             </Link>
           )}

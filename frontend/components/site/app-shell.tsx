@@ -1,5 +1,13 @@
 "use client";
 
+import {
+  LayoutGrid,
+  ListTodo,
+  LogOut,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
@@ -23,29 +31,13 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 function NavIcon({ icon, active }: { icon: NavItem["icon"]; active: boolean }) {
-  const stroke = active ? "var(--accent)" : "var(--foreground-muted)";
+  const className = "h-5 w-5";
 
   if (icon === "admin") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 fill-none" style={{ stroke }}>
-        <rect x="4" y="4" width="6.5" height="6.5" rx="1.5" strokeWidth="1.8" />
-        <rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5" strokeWidth="1.8" />
-        <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5" strokeWidth="1.8" />
-        <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5" strokeWidth="1.8" />
-      </svg>
-    );
+    return <LayoutGrid aria-hidden="true" className={className} color={active ? "var(--accent)" : "var(--foreground-muted)"} />;
   }
 
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 fill-none" style={{ stroke }}>
-      <path d="M8 6.5h11" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M8 12h11" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M8 17.5h11" strokeWidth="1.8" strokeLinecap="round" />
-      <circle cx="5" cy="6.5" r="1.2" fill={stroke} stroke="none" />
-      <circle cx="5" cy="12" r="1.2" fill={stroke} stroke="none" />
-      <circle cx="5" cy="17.5" r="1.2" fill={stroke} stroke="none" />
-    </svg>
-  );
+  return <ListTodo aria-hidden="true" className={className} color={active ? "var(--accent)" : "var(--foreground-muted)"} />;
 }
 
 function isItemActive(pathname: string, href: string) {
@@ -109,9 +101,7 @@ export default function AppShell({ children }: AppShellProps) {
                 className="hidden h-10 w-10 items-center justify-center rounded-full lg:inline-flex"
                 style={{ color: "var(--foreground-muted)" }}
               >
-                <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none" style={{ stroke: "currentColor" }} aria-hidden="true">
-                  <path d="M14.5 6 9 12l5.5 6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                <PanelLeftClose className="h-5 w-5" aria-hidden="true" />
               </button>
             ) : null}
           </div>
@@ -124,9 +114,7 @@ export default function AppShell({ children }: AppShellProps) {
               className="mx-auto mt-4 hidden h-10 w-10 items-center justify-center rounded-full lg:inline-flex"
               style={{ color: "var(--foreground-muted)" }}
             >
-              <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none" style={{ stroke: "currentColor" }} aria-hidden="true">
-                <path d="M9.5 6 15 12l-5.5 6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              <PanelLeftOpen className="h-5 w-5" aria-hidden="true" />
             </button>
           ) : null}
 
@@ -170,12 +158,13 @@ export default function AppShell({ children }: AppShellProps) {
             </div>
             <Link
               href="/logout"
-              className={`button-ghost flex items-center justify-center rounded-full px-4 py-3 text-sm font-medium ${
+              className={`button-ghost flex items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-medium ${
                 isCollapsed ? "mx-auto w-11 px-0" : "w-full"
               }`}
               title={isCollapsed ? "Sign out" : undefined}
             >
-              {isCollapsed ? "↗" : "Sign out"}
+              <LogOut className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {isCollapsed ? null : "Sign out"}
             </Link>
           </div>
         </aside>
@@ -191,11 +180,7 @@ export default function AppShell({ children }: AppShellProps) {
                   className="flex h-10 w-10 items-center justify-center rounded-full lg:hidden"
                   style={{ color: "var(--foreground-muted)" }}
                 >
-                  <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none" style={{ stroke: "currentColor" }} aria-hidden="true">
-                    <path d="M4 7h16" strokeWidth="1.8" strokeLinecap="round" />
-                    <path d="M4 12h16" strokeWidth="1.8" strokeLinecap="round" />
-                    <path d="M4 17h16" strokeWidth="1.8" strokeLinecap="round" />
-                  </svg>
+                  <Menu className="h-5 w-5" aria-hidden="true" />
                 </button>
                 <button
                   type="button"
@@ -204,13 +189,7 @@ export default function AppShell({ children }: AppShellProps) {
                   className="hidden h-10 w-10 items-center justify-center rounded-full lg:flex"
                   style={{ color: "var(--foreground-muted)" }}
                 >
-                  <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none" style={{ stroke: "currentColor" }} aria-hidden="true">
-                    {isCollapsed ? (
-                      <path d="M9.5 6 15 12l-5.5 6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                    ) : (
-                      <path d="M14.5 6 9 12l5.5 6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                    )}
-                  </svg>
+                  {isCollapsed ? <PanelLeftOpen className="h-5 w-5" aria-hidden="true" /> : <PanelLeftClose className="h-5 w-5" aria-hidden="true" />}
                 </button>
                 <h1 className="truncate text-xl font-semibold sm:text-2xl">{currentSection.description}</h1>
               </div>

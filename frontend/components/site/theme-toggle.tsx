@@ -1,5 +1,6 @@
 "use client";
 
+import { MoonStar, SunMedium } from "lucide-react";
 import { useEffect, useState } from "react";
 
 type ThemeMode = "light" | "dark";
@@ -44,16 +45,20 @@ export default function ThemeToggle({ compact = false }: ThemeToggleProps) {
     applyTheme(next);
   };
 
+  const nextModeLabel = mode === "dark" ? "light" : "dark";
+  const Icon = mode === "dark" ? SunMedium : MoonStar;
+
   return (
     <button
       type="button"
       onClick={toggleTheme}
-      className={`button-secondary rounded-full text-sm font-medium ${compact ? "h-11 w-11 px-0 py-0" : "px-4 py-2"}`}
+      className={`button-secondary inline-flex items-center justify-center gap-2 rounded-full text-sm font-medium ${compact ? "h-11 w-11 px-0 py-0" : "px-4 py-2"}`}
       aria-pressed={mode === "dark"}
-      aria-label={`Switch to ${mode === "dark" ? "light" : "dark"} mode`}
-      title={compact ? (mode === "dark" ? "Use light mode" : "Use dark mode") : undefined}
+      aria-label={`Switch to ${nextModeLabel} mode`}
+      title={compact ? `Use ${nextModeLabel} mode` : undefined}
     >
-      {compact ? (mode === "dark" ? "L" : "D") : mode === "dark" ? "Use light mode" : "Use dark mode"}
+      <Icon className="h-4 w-4" aria-hidden="true" />
+      {compact ? null : `Use ${nextModeLabel} mode`}
     </button>
   );
 }

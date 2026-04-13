@@ -1,5 +1,7 @@
 "use client";
 
+import { isValidJalaaliDate, toGregorian, toJalaali } from "jalaali-js";
+import { ArrowUp, Check, CheckCircle2, Circle, ListFilter, LoaderCircle, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -34,6 +36,12 @@ type ToastMessage = {
   message: string;
 };
 
+type JalaliDateParts = {
+  year: string;
+  month: string;
+  day: string;
+};
+
 const STATUS_LABELS: Record<TaskStatus, string> = {
   todo: "To do",
   in_progress: "In progress",
@@ -41,12 +49,13 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
 };
 
 const FILTER_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
-  { value: "all", label: "All tasks" },
-  { value: "active", label: "Undone tasks" },
-  { value: "done", label: "Done tasks" },
+  { value: "all", label: "All tasks", icon: ListFilter },
+  { value: "active", label: "Undone tasks", icon: Circle },
+  { value: "done", label: "Done tasks", icon: CheckCircle2 },
 ];
 
 const SESSION_COOKIE_KEY = "planning_session";
+const EMPTY_JALALI_DATE: JalaliDateParts = { year: "", month: "", day: "" };
 
 async function readErrorMessage(response: Response) {
   const payload = await response.json().catch(() => ({}));
@@ -56,15 +65,43 @@ async function readErrorMessage(response: Response) {
 
 function formatDueDate(value: string | null) {
   if (!value) return null;
+  const [year, month, day] = value.split("-").map((part) => Number.parseInt(part, 10));
+  if (!year || !month || !day) return value;
 
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
+  const jalali = toJalaali(year, month, day);
+  return `${jalali.jy}/${String(jalali.jm).padStart(2, "0")}/${String(jalali.jd).padStart(2, "0")}`;
+}
 
-  return parsed.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+function toJalaliDateParts(value: string | null): JalaliDateParts {
+  if (!value) return { ...EMPTY_JALALI_DATE };
+
+  const [year, month, day] = value.split("-").map((part) => Number.parseInt(part, 10));
+  if (!year || !month || !day) return { ...EMPTY_JALALI_DATE };
+
+  const jalali = toJalaali(year, month, day);
+  return {
+    year: String(jalali.jy),
+    month: String(jalali.jm).padStart(2, "0"),
+    day: String(jalali.jd).padStart(2, "0"),
+  };
+}
+
+function toGregorianDateString(value: JalaliDateParts) {
+  const year = Number.parseInt(value.year, 10);
+  const month = Number.parseInt(value.month, 10);
+  const day = Number.parseInt(value.day, 10);
+
+  if (!year && !month && !day) return null;
+  if (!year || !month || !day) {
+    throw new Error("Enter a complete Jalali due date.");
+  }
+
+  if (!isValidJalaaliDate(year, month, day)) {
+    throw new Error("Enter a valid Jalali due date.");
+  }
+
+  const gregorian = toGregorian(year, month, day);
+  return `${gregorian.gy}-${String(gregorian.gm).padStart(2, "0")}-${String(gregorian.gd).padStart(2, "0")}`;
 }
 
 function summarizeNotes(value: string | null) {
@@ -118,36 +155,6 @@ function filterTasks(tasks: Task[], filter: StatusFilter) {
   return tasks;
 }
 
-function FilterIcon({ filter }: { filter: StatusFilter }) {
-  if (filter === "active") {
-    return (
-      <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none" style={{ stroke: "currentColor" }} aria-hidden="true">
-        <circle cx="12" cy="12" r="7" strokeWidth="1.8" />
-      </svg>
-    );
-  }
-
-  if (filter === "done") {
-    return (
-      <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none" style={{ stroke: "currentColor" }} aria-hidden="true">
-        <circle cx="12" cy="12" r="7" strokeWidth="1.8" />
-        <path d="m8.8 12.2 2.2 2.2 4.3-4.6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none" style={{ stroke: "currentColor" }} aria-hidden="true">
-      <path d="M8 7h9" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M8 12h9" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M8 17h9" strokeWidth="1.8" strokeLinecap="round" />
-      <circle cx="5.25" cy="7" r="0.9" fill="currentColor" stroke="none" />
-      <circle cx="5.25" cy="12" r="0.9" fill="currentColor" stroke="none" />
-      <circle cx="5.25" cy="17" r="0.9" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
 function StatusFilterControl({
   value,
   onChange,
@@ -167,6 +174,7 @@ function StatusFilterControl({
     >
       {FILTER_OPTIONS.map((option) => {
         const active = option.value === value;
+        const Icon = option.icon;
 
         return (
           <button
@@ -187,7 +195,7 @@ function StatusFilterControl({
             aria-pressed={active}
             title={option.label}
           >
-            <FilterIcon filter={option.value} />
+            <Icon className="h-4 w-4" aria-hidden="true" />
           </button>
         );
       })}
@@ -298,7 +306,7 @@ export default function HomePage() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editNotes, setEditNotes] = useState("");
-  const [editDueDate, setEditDueDate] = useState("");
+  const [editDueDate, setEditDueDate] = useState<JalaliDateParts>({ ...EMPTY_JALALI_DATE });
   const [editStatus, setEditStatus] = useState<TaskStatus>("todo");
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -367,18 +375,23 @@ export default function HomePage() {
     setTitle("");
   }
 
-  function openEditModal(task: Task) {
+  const openEditModal = useCallback((task: Task) => {
     setEditingTask(task);
     setEditTitle(task.title);
     setEditNotes(task.notes ?? "");
-    setEditDueDate(task.due_date ? task.due_date.slice(0, 10) : "");
+    setEditDueDate(toJalaliDateParts(task.due_date));
     setEditStatus(task.status);
-  }
+  }, []);
 
-  function closeEditModal() {
+  const closeEditModal = useCallback(() => {
     if (isEditSubmitting) return;
     setEditingTask(null);
-  }
+  }, [isEditSubmitting]);
+
+  const handleEditDueDateChange = useCallback((field: keyof JalaliDateParts, value: string) => {
+    const sanitized = value.replace(/\D/g, "").slice(0, field === "year" ? 4 : 2);
+    setEditDueDate((current) => ({ ...current, [field]: sanitized }));
+  }, []);
 
   async function handleCreateTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -447,11 +460,12 @@ export default function HomePage() {
     setIsEditSubmitting(true);
 
     try {
+      const dueDate = toGregorianDateString(editDueDate);
       const response = await put(`/planning/tasks/${editingTask.id}`, {
         title: cleanedTitle,
         notes: editNotes.trim() ? editNotes.trim() : null,
         status: editStatus,
-        due_date: editDueDate || null,
+        due_date: dueDate,
       });
 
       if (!response.ok) {
@@ -640,7 +654,6 @@ export default function HomePage() {
             >
               {visibleTasks.map((task) => {
                 const isBusy = busyTaskId === task.id;
-                const isDeletingTask = isBusy && busyTaskAction === "delete";
                 const isTogglingTask = isBusy && busyTaskAction === "toggle";
                 const dueLabel = formatDueDate(task.due_date);
                 const notePreview = summarizeNotes(task.notes);
@@ -654,51 +667,57 @@ export default function HomePage() {
                     }}
                   >
                     <div
-                      className="flex gap-3 px-4 py-4 transition-colors sm:px-6 sm:py-5"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openEditModal(task)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          openEditModal(task);
+                        }
+                      }}
+                      className="task-row flex gap-3 px-4 py-4 sm:px-6 sm:py-5"
                       style={{
                         backgroundColor: isBusy
                           ? "color-mix(in srgb, var(--accent-tint) 18%, var(--background-elevated))"
                           : undefined,
                       }}
+                      aria-label={`Open details for ${task.title}`}
                     >
                       <button
                         type="button"
-                        onClick={() => void handleToggleDone(task)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleToggleDone(task);
+                        }}
+                        onKeyDown={(event) => {
+                          event.stopPropagation();
+                        }}
                         disabled={isBusy}
                         aria-label={task.status === "done" ? `Mark ${task.title} as to do` : `Mark ${task.title} as done`}
-                        className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border"
+                        className="task-status-toggle mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
                         style={
                           task.status === "done"
                             ? {
                                 backgroundColor: "var(--accent)",
-                                borderColor: "var(--accent)",
                                 color: "#ffffff",
                               }
                             : {
-                                backgroundColor: "var(--background-elevated)",
-                                borderColor: "color-mix(in srgb, var(--card-border) 80%, transparent)",
+                                backgroundColor: "color-mix(in srgb, var(--background-elevated) 84%, var(--background))",
                                 color: "var(--foreground-muted)",
                               }
                         }
                       >
-                        <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none" style={{ stroke: "currentColor" }} aria-hidden="true">
-                          <path d="m6.5 12.5 3.2 3.2 7.8-7.8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
+                        {isTogglingTask ? (
+                          <LoaderCircle className="h-5 w-5 animate-spin" aria-hidden="true" />
+                        ) : task.status === "done" ? (
+                          <Check className="h-5 w-5" aria-hidden="true" />
+                        ) : (
+                          <Circle className="h-5 w-5" aria-hidden="true" />
+                        )}
                       </button>
 
-                      <div
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => openEditModal(task)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            openEditModal(task);
-                          }
-                        }}
-                        className="interactive-card min-w-0 flex-1 rounded-[24px] px-2 py-1 text-left sm:px-3"
-                        aria-label={`Open details for ${task.title}`}
-                      >
+                      <div className="min-w-0 flex-1 px-2 py-1 text-left sm:px-3">
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
@@ -742,40 +761,13 @@ export default function HomePage() {
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 self-start">
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setPendingConfirmation({ kind: "delete", task });
-                              }}
-                              disabled={isBusy || isClearingCompleted}
-                              className="button-danger flex h-10 w-10 items-center justify-center rounded-full p-0"
-                              aria-label={`Remove ${task.title}`}
-                              title="Remove task"
-                            >
-                              {isDeletingTask ? (
-                                <span className="text-[10px] font-semibold">...</span>
-                              ) : (
-                                <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none" style={{ stroke: "currentColor" }} aria-hidden="true">
-                                  <path d="M9.5 9.5v6" strokeWidth="1.8" strokeLinecap="round" />
-                                  <path d="M14.5 9.5v6" strokeWidth="1.8" strokeLinecap="round" />
-                                  <path d="M5.5 7.5h13" strokeWidth="1.8" strokeLinecap="round" />
-                                  <path d="M8.5 7.5V6a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v1.5" strokeWidth="1.8" strokeLinecap="round" />
-                                  <path d="m7.2 7.5.7 10a1.5 1.5 0 0 0 1.5 1.4h5.2a1.5 1.5 0 0 0 1.5-1.4l.7-10" strokeWidth="1.8" strokeLinecap="round" />
-                                </svg>
-                              )}
-                            </button>
-                          </div>
                         </div>
 
-                        <p className="mt-3 text-xs" style={{ color: "var(--foreground-muted)" }}>
-                          {isTogglingTask
-                            ? "Updating status..."
-                            : task.status === "done"
-                              ? "Completed tasks stay visible until you clear them."
-                              : "Open details for notes, due date, or status changes."}
-                        </p>
+                        {isTogglingTask ? (
+                          <p className="mt-3 text-xs" style={{ color: "var(--foreground-muted)" }}>
+                            Updating status...
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                   </li>
@@ -786,31 +778,36 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="sticky bottom-0 mt-5 pb-2">
-        <form
-          onSubmit={handleCreateTask}
-          className="surface-card mx-auto flex max-w-4xl items-center gap-3 rounded-[28px] px-3 py-3 sm:px-4"
-          style={{
-            backgroundColor: "color-mix(in srgb, var(--card) 92%, transparent)",
-            backdropFilter: "blur(18px)",
-          }}
-        >
-          <input
-            id="new-task-title"
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder="Add a task..."
-            className="field min-h-12 rounded-full border-transparent bg-transparent px-4 py-3 text-sm shadow-none focus:border-transparent focus:shadow-none"
-            aria-label="Add a task"
-            required
-          />
-          <button
-            type="submit"
-            disabled={isSubmitting || !title.trim()}
-            className="button-primary rounded-full px-5 py-3 text-sm font-semibold disabled:opacity-60"
-          >
-            {isSubmitting ? "Adding..." : "Add"}
-          </button>
+      <section className="sticky bottom-0 z-10 mt-6 px-1 pb-3 pt-8">
+        <form onSubmit={handleCreateTask} className="task-composer mx-auto max-w-4xl px-4 py-3 sm:px-5">
+          <div className="flex items-center gap-3">
+            <span
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+              style={{ color: "var(--foreground-muted)" }}
+            >
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
+            </span>
+
+            <input
+              id="new-task-title"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="Add a task..."
+              className="task-composer-input min-h-12 flex-1 bg-transparent text-sm"
+              aria-label="Add a task"
+              required
+            />
+
+            <button
+              type="submit"
+              disabled={isSubmitting || !title.trim()}
+              className="task-composer-send inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full p-0 disabled:opacity-60"
+              aria-label={isSubmitting ? "Adding task" : "Add task"}
+              title={isSubmitting ? "Adding..." : "Add task"}
+            >
+              {isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ArrowUp className="h-4 w-4" aria-hidden="true" />}
+            </button>
+          </div>
         </form>
       </section>
 
@@ -818,7 +815,7 @@ export default function HomePage() {
         isOpen={editingTask !== null}
         onClose={closeEditModal}
         title="Edit task"
-        description="Adjust the task only when you need more detail. The list stays clean, the editor carries the rest."
+        description="Update the title, notes, Jalali due date, or status."
       >
         <form onSubmit={handleUpdateTask} className="space-y-4">
           <div>
@@ -849,16 +846,41 @@ export default function HomePage() {
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label htmlFor="edit-task-due-date" className="text-sm font-semibold">
-                Due date
+              <label htmlFor="edit-task-due-year" className="text-sm font-semibold">
+                Due date (Jalali)
               </label>
-              <input
-                id="edit-task-due-date"
-                type="date"
-                value={editDueDate}
-                onChange={(event) => setEditDueDate(event.target.value)}
-                className="field mt-2 rounded-2xl px-4 py-3 text-sm"
-              />
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                <input
+                  id="edit-task-due-year"
+                  inputMode="numeric"
+                  placeholder="1403"
+                  value={editDueDate.year}
+                  onChange={(event) => handleEditDueDateChange("year", event.target.value)}
+                  className="field rounded-2xl px-4 py-3 text-sm"
+                  aria-label="Jalali due year"
+                />
+                <input
+                  id="edit-task-due-month"
+                  inputMode="numeric"
+                  placeholder="01"
+                  value={editDueDate.month}
+                  onChange={(event) => handleEditDueDateChange("month", event.target.value)}
+                  className="field rounded-2xl px-4 py-3 text-sm"
+                  aria-label="Jalali due month"
+                />
+                <input
+                  id="edit-task-due-day"
+                  inputMode="numeric"
+                  placeholder="01"
+                  value={editDueDate.day}
+                  onChange={(event) => handleEditDueDateChange("day", event.target.value)}
+                  className="field rounded-2xl px-4 py-3 text-sm"
+                  aria-label="Jalali due day"
+                />
+              </div>
+              <p className="mt-2 text-xs" style={{ color: "var(--foreground-muted)" }}>
+                Enter year, month, then day. It is stored as Gregorian and shown as Jalali.
+              </p>
             </div>
 
             <div>
