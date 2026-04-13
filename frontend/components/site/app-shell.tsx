@@ -153,9 +153,6 @@ export default function AppShell({ children }: AppShellProps) {
           </nav>
 
           <div className={`mt-auto space-y-3 ${isCollapsed ? "px-0" : "px-1"} pt-6`}>
-            <div className={isCollapsed ? "flex justify-center" : ""}>
-              <ThemeToggle compact={isCollapsed} />
-            </div>
             <Link
               href="/logout"
               className={`button-ghost flex items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-medium ${

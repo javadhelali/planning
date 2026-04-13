@@ -1,7 +1,7 @@
 "use client";
 
 import { isValidJalaaliDate, toGregorian, toJalaali } from "jalaali-js";
-import { ArrowUp, Check, CheckCircle2, Circle, ListFilter, LoaderCircle, Sparkles } from "lucide-react";
+import { ArrowUp, CalendarDays, Check, CheckCircle2, Circle, Eraser, ListFilter, LoaderCircle, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -40,12 +40,6 @@ type JalaliDateParts = {
   year: string;
   month: string;
   day: string;
-};
-
-const STATUS_LABELS: Record<TaskStatus, string> = {
-  todo: "To do",
-  in_progress: "In progress",
-  done: "Done",
 };
 
 const FILTER_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
@@ -597,18 +591,14 @@ export default function HomePage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: "var(--foreground-muted)" }}>
-                View
-              </p>
-              <StatusFilterControl value={statusFilter} onChange={setStatusFilter} />
-            </div>
+            <StatusFilterControl value={statusFilter} onChange={setStatusFilter} />
             <button
               type="button"
               onClick={() => setPendingConfirmation({ kind: "clear_completed" })}
               disabled={isLoading || isClearingCompleted || completedTasksCount === 0}
-              className="button-ghost rounded-full px-4 py-2.5 text-sm font-medium disabled:opacity-60"
+              className="button-ghost inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-medium disabled:opacity-60"
             >
+              {isClearingCompleted ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Eraser className="h-4 w-4" aria-hidden="true" />}
               {isClearingCompleted ? "Clearing..." : "Clear done"}
             </button>
           </div>
@@ -695,7 +685,7 @@ export default function HomePage() {
                         }}
                         disabled={isBusy}
                         aria-label={task.status === "done" ? `Mark ${task.title} as to do` : `Mark ${task.title} as done`}
-                        className="task-status-toggle mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
+                        className="task-status-toggle flex h-11 w-11 shrink-0 self-start items-center justify-center rounded-full"
                         style={
                           task.status === "done"
                             ? {
@@ -717,16 +707,25 @@ export default function HomePage() {
                         )}
                       </button>
 
-                      <div className="min-w-0 flex-1 px-2 py-1 text-left sm:px-3">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 flex-1 px-2 py-0.5 text-left sm:px-3">
+                        <div className="flex flex-col gap-3">
                           <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex min-h-11 flex-wrap items-center justify-between gap-3">
                               <h3 className={`text-base font-semibold sm:text-lg ${task.status === "done" ? "line-through opacity-70" : ""}`}>
                                 {task.title}
                               </h3>
-                              <span className="rounded-full px-3 py-1 text-xs font-medium" style={statusPillStyle(task.status)}>
-                                {STATUS_LABELS[task.status]}
-                              </span>
+                              {dueLabel ? (
+                                <span
+                                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium"
+                                  style={{
+                                    backgroundColor: "color-mix(in srgb, var(--background-subtle) 72%, transparent)",
+                                    color: "var(--foreground-muted)",
+                                  }}
+                                >
+                                  <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+                                  {dueLabel}
+                                </span>
+                              ) : null}
                             </div>
 
                             {notePreview ? (
@@ -734,33 +733,7 @@ export default function HomePage() {
                                 {notePreview}
                               </p>
                             ) : null}
-
-                            <div className="mt-3 flex flex-wrap items-center gap-2">
-                              {dueLabel ? (
-                                <span
-                                  className="rounded-full px-3 py-1 text-xs font-medium"
-                                  style={{
-                                    backgroundColor: "color-mix(in srgb, var(--background-subtle) 72%, transparent)",
-                                    color: "var(--foreground-muted)",
-                                  }}
-                                >
-                                  Due {dueLabel}
-                                </span>
-                              ) : null}
-                              {task.notes ? (
-                                <span
-                                  className="rounded-full px-3 py-1 text-xs font-medium"
-                                  style={{
-                                    backgroundColor: "color-mix(in srgb, var(--background-elevated) 92%, transparent)",
-                                    color: "var(--foreground-muted)",
-                                  }}
-                                >
-                                  Notes attached
-                                </span>
-                              ) : null}
-                            </div>
                           </div>
-
                         </div>
 
                         {isTogglingTask ? (
@@ -779,7 +752,7 @@ export default function HomePage() {
       </section>
 
       <section className="sticky bottom-0 z-10 mt-6 px-1 pb-3 pt-8">
-        <form onSubmit={handleCreateTask} className="task-composer mx-auto max-w-4xl px-4 py-3 sm:px-5">
+        <form onSubmit={handleCreateTask} autoComplete="off" className="task-composer mx-auto max-w-4xl px-4 py-3 sm:px-5">
           <div className="flex items-center gap-3">
             <span
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
@@ -790,11 +763,15 @@ export default function HomePage() {
 
             <input
               id="new-task-title"
+              name="new-task-title"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Add a task..."
               className="task-composer-input min-h-12 flex-1 bg-transparent text-sm"
               aria-label="Add a task"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
               required
             />
 
