@@ -1,12 +1,19 @@
 "use client";
 
+import { isValidJalaaliDate, toGregorian, toJalaali } from "jalaali-js";
 import {
   Archive,
+  CalendarRange,
+  Clock3,
+  Ellipsis,
+  Gauge,
   LoaderCircle,
+  ListTodo,
   Minus,
   PencilLine,
   Plus,
   RotateCcw,
+  Target,
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
@@ -18,6 +25,12 @@ import Modal from "@/components/site/modal";
 type AuthState = "checking" | "authenticated" | "guest";
 type OkrView = "active" | "archived";
 type KeyResultHealth = "ahead" | "on_track" | "off_track" | "critical";
+
+type JalaliDateParts = {
+  year: string;
+  month: string;
+  day: string;
+};
 
 type KeyResult = {
   id: number;
@@ -67,6 +80,7 @@ type PendingConfirmation =
 
 const SESSION_COOKIE_KEY = "planning_session";
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const EMPTY_JALALI_DATE: JalaliDateParts = { year: "", month: "", day: "" };
 
 async function readErrorMessage(response: Response) {
   const payload = await response.json().catch(() => ({}));
@@ -110,17 +124,50 @@ function formatMetricValue(value: number) {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
-function formatDateLabel(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(parseDateString(value));
+function formatJalaliDate(value: string) {
+  const [year, month, day] = value.split("-").map((part) => Number.parseInt(part, 10));
+  if (!year || !month || !day) return value;
+
+  const jalali = toJalaali(year, month, day);
+  return `${jalali.jy}/${String(jalali.jm).padStart(2, "0")}/${String(jalali.jd).padStart(2, "0")}`;
 }
 
-function formatDateRange(startDate: string, endDate: string) {
-  return `${formatDateLabel(startDate)} - ${formatDateLabel(endDate)}`;
+function formatJalaliDateRange(startDate: string, endDate: string) {
+  return `${formatJalaliDate(startDate)} - ${formatJalaliDate(endDate)}`;
+}
+
+function toJalaliDateParts(value: string): JalaliDateParts {
+  const [year, month, day] = value.split("-").map((part) => Number.parseInt(part, 10));
+  if (!year || !month || !day) return { ...EMPTY_JALALI_DATE };
+
+  const jalali = toJalaali(year, month, day);
+  return {
+    year: String(jalali.jy),
+    month: String(jalali.jm).padStart(2, "0"),
+    day: String(jalali.jd).padStart(2, "0"),
+  };
+}
+
+function toGregorianDateString(value: JalaliDateParts) {
+  const year = Number.parseInt(value.year, 10);
+  const month = Number.parseInt(value.month, 10);
+  const day = Number.parseInt(value.day, 10);
+
+  if (!year || !month || !day) {
+    throw new Error("Enter a complete Jalali date.");
+  }
+
+  if (!isValidJalaaliDate(year, month, day)) {
+    throw new Error("Enter a valid Jalali date.");
+  }
+
+  const gregorian = toGregorian(year, month, day);
+  return `${gregorian.gy}-${String(gregorian.gm).padStart(2, "0")}-${String(gregorian.gd).padStart(2, "0")}`;
+}
+
+function futureDateString(daysAhead: number) {
+  const date = new Date(parseDateString(localTodayString()).getTime() + daysAhead * DAY_IN_MS);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
 
 function sortOkrs(items: Okr[]) {
@@ -155,6 +202,11 @@ function keyResultProgress(keyResult: KeyResult) {
 
 function keyResultProgressPercent(keyResult: KeyResult) {
   return clampPercentage(keyResultProgress(keyResult) * 100);
+}
+
+function keyResultExpectedValue(okr: Okr, keyResult: KeyResult, today: string) {
+  const ratio = timelineRatio(okr, today);
+  return keyResult.start_value + (keyResult.target_value - keyResult.start_value) * ratio;
 }
 
 function objectiveProgress(okr: Okr) {
@@ -215,8 +267,8 @@ function healthStyle(health: KeyResultHealth) {
 function timelineSummary(okr: Okr, today: string) {
   if (okr.is_archived) {
     return {
-      label: okr.archived_at ? `Archived ${formatDateLabel(okr.archived_at.slice(0, 10))}` : "Archived",
-      secondary: formatDateRange(okr.start_date, okr.end_date),
+      label: okr.archived_at ? `Archived ${formatJalaliDate(okr.archived_at.slice(0, 10))}` : "Archived",
+      secondary: formatJalaliDateRange(okr.start_date, okr.end_date),
     };
   }
 
@@ -244,12 +296,25 @@ function timelineSummary(okr: Okr, today: string) {
   };
 }
 
-function ProgressBar({ value }: { value: number }) {
+function ProgressBar({ value, expectedValue }: { value: number; expectedValue?: number | null }) {
+  const normalizedExpected = expectedValue === undefined || expectedValue === null ? null : clampPercentage(expectedValue);
+
   return (
     <div
-      className="h-2.5 overflow-hidden rounded-full"
+      className="relative h-3 overflow-hidden rounded-full"
       style={{ backgroundColor: "color-mix(in srgb, var(--background-elevated) 86%, var(--background))" }}
     >
+      {normalizedExpected !== null ? (
+        <div
+          aria-hidden="true"
+          className="absolute inset-y-0 z-10 w-[2px] -translate-x-1/2 rounded-full"
+          style={{
+            left: `${normalizedExpected}%`,
+            backgroundColor: "color-mix(in srgb, var(--foreground) 68%, white)",
+            boxShadow: "0 0 0 2px color-mix(in srgb, var(--background) 86%, transparent)",
+          }}
+        />
+      ) : null}
       <div
         className="h-full rounded-full transition-[width] duration-200"
         style={{
@@ -262,45 +327,173 @@ function ProgressBar({ value }: { value: number }) {
   );
 }
 
-function HoverAction({
+function MetaItem({
+  icon,
   children,
-  title,
-  onClick,
-  disabled = false,
-  tone = "default",
 }: {
+  icon: ReactNode;
   children: ReactNode;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span style={{ color: "var(--foreground-muted)" }}>{icon}</span>
+      <span>{children}</span>
+    </span>
+  );
+}
+
+function ActionMenuButton({
+  title,
+  isOpen,
+  onClick,
+}: {
   title: string;
+  isOpen: boolean;
   onClick: () => void;
-  disabled?: boolean;
-  tone?: "default" | "danger";
 }) {
   return (
     <button
       type="button"
       aria-label={title}
       title={title}
-      disabled={disabled}
       onClick={onClick}
-      className={`flex h-9 w-9 items-center justify-center rounded-full border transition disabled:cursor-not-allowed disabled:opacity-60 ${
-        tone === "danger" ? "sm:hover:brightness-95" : ""
-      } opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100`}
+      aria-expanded={isOpen}
+      className="flex h-9 w-9 items-center justify-center rounded-full border transition"
+      style={{
+        borderColor: isOpen
+          ? "color-mix(in srgb, var(--accent) 18%, transparent)"
+          : "color-mix(in srgb, var(--card-border) 62%, transparent)",
+        backgroundColor: isOpen
+          ? "color-mix(in srgb, var(--accent-tint) 62%, transparent)"
+          : "color-mix(in srgb, var(--background-elevated) 88%, transparent)",
+        color: isOpen ? "var(--accent)" : "var(--foreground-muted)",
+      }}
+    >
+      <Ellipsis className="h-4 w-4" aria-hidden="true" />
+    </button>
+  );
+}
+
+function ActionMenuItem({
+  children,
+  onClick,
+  tone = "default",
+  disabled = false,
+}: {
+  children: ReactNode;
+  onClick: () => void;
+  tone?: "default" | "danger";
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-2 text-left text-sm transition disabled:opacity-60"
       style={
         tone === "danger"
           ? {
-              borderColor: "color-mix(in srgb, var(--danger) 12%, transparent)",
-              backgroundColor: "color-mix(in srgb, var(--danger-tint) 56%, transparent)",
               color: "var(--danger)",
+              backgroundColor: "color-mix(in srgb, var(--danger-tint) 34%, transparent)",
             }
           : {
-              borderColor: "color-mix(in srgb, var(--card-border) 62%, transparent)",
-              backgroundColor: "color-mix(in srgb, var(--background-elevated) 88%, transparent)",
-              color: "var(--foreground-muted)",
+              color: "var(--foreground)",
+              backgroundColor: "transparent",
             }
       }
     >
       {children}
     </button>
+  );
+}
+
+function ActionMenu({
+  menuKey,
+  openMenuKey,
+  onToggle,
+  children,
+}: {
+  menuKey: string;
+  openMenuKey: string | null;
+  onToggle: (menuKey: string) => void;
+  children: ReactNode;
+}) {
+  const isOpen = openMenuKey === menuKey;
+
+  return (
+    <div data-action-menu-root className="relative">
+      <ActionMenuButton title="Open actions" isOpen={isOpen} onClick={() => onToggle(menuKey)} />
+      {isOpen ? (
+        <div
+          className="surface-card absolute right-0 top-11 z-20 w-52 rounded-[24px] p-2 shadow-[var(--shadow-4)]"
+          style={{ border: "1px solid color-mix(in srgb, var(--card-border) 72%, transparent)" }}
+        >
+          <div className="space-y-1">{children}</div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ActionMenuStepper({
+  value,
+  step,
+  unit,
+  isIncreaseBusy,
+  isDecreaseBusy,
+  onIncrease,
+  onDecrease,
+}: {
+  value: number;
+  step: number;
+  unit: string | null;
+  isIncreaseBusy: boolean;
+  isDecreaseBusy: boolean;
+  onIncrease: () => void;
+  onDecrease: () => void;
+}) {
+  return (
+    <div
+      className="rounded-[20px] px-3 py-3"
+      style={{ backgroundColor: "color-mix(in srgb, var(--background-elevated) 92%, transparent)" }}
+    >
+      <div
+        className="inline-flex w-full items-center justify-between rounded-[20px] border p-1"
+        style={{
+          borderColor: "color-mix(in srgb, var(--card-border) 72%, transparent)",
+          backgroundColor: "color-mix(in srgb, var(--background) 48%, var(--background-elevated))",
+        }}
+      >
+        <button
+          type="button"
+          aria-label="Decrease current value"
+          title="Decrease current value"
+          disabled={isDecreaseBusy}
+          onClick={onDecrease}
+          className="flex h-8 w-8 items-center justify-center rounded-full"
+          style={{ color: "var(--foreground-muted)" }}
+        >
+          {isDecreaseBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Minus className="h-3 w-3" aria-hidden="true" />}
+        </button>
+        <span className="inline-flex min-w-14 items-center justify-center text-sm font-semibold">{formatMetricValue(value)}</span>
+        <button
+          type="button"
+          aria-label="Increase current value"
+          title="Increase current value"
+          disabled={isIncreaseBusy}
+          onClick={onIncrease}
+          className="flex h-8 w-8 items-center justify-center rounded-full"
+          style={{ color: "var(--foreground-muted)" }}
+        >
+          {isIncreaseBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Plus className="h-3 w-3" aria-hidden="true" />}
+        </button>
+      </div>
+      <p className="mt-2 text-xs" style={{ color: "var(--foreground-muted)" }}>
+        Step {formatMetricValue(step)}
+        {unit ? ` ${unit}` : ""}
+      </p>
+    </div>
   );
 }
 
@@ -331,6 +524,55 @@ function InlineGuide({
   );
 }
 
+function JalaliDateInput({
+  label,
+  value,
+  prefix,
+  onChange,
+}: {
+  label: string;
+  value: JalaliDateParts;
+  prefix: string;
+  onChange: (field: keyof JalaliDateParts, nextValue: string) => void;
+}) {
+  return (
+    <div>
+      <label htmlFor={`${prefix}-year`} className="text-sm font-semibold">
+        {label}
+      </label>
+      <div className="mt-2 grid grid-cols-3 gap-2">
+        <input
+          id={`${prefix}-year`}
+          inputMode="numeric"
+          placeholder="1404"
+          value={value.year}
+          onChange={(event) => onChange("year", event.target.value)}
+          className="field rounded-2xl px-4 py-3 text-sm"
+          aria-label={`${label} year`}
+        />
+        <input
+          id={`${prefix}-month`}
+          inputMode="numeric"
+          placeholder="01"
+          value={value.month}
+          onChange={(event) => onChange("month", event.target.value)}
+          className="field rounded-2xl px-4 py-3 text-sm"
+          aria-label={`${label} month`}
+        />
+        <input
+          id={`${prefix}-day`}
+          inputMode="numeric"
+          placeholder="01"
+          value={value.day}
+          onChange={(event) => onChange("day", event.target.value)}
+          className="field rounded-2xl px-4 py-3 text-sm"
+          aria-label={`${label} day`}
+        />
+      </div>
+    </div>
+  );
+}
+
 function GuestOkrPage() {
   return (
     <div className="content-width mx-auto px-4 py-10 sm:px-6 sm:py-14">
@@ -346,8 +588,8 @@ function GuestOkrPage() {
             Keep a few real objectives visible and know early when a key result is slipping.
           </h1>
           <p className="mt-4 max-w-xl text-base leading-7" style={{ color: "var(--foreground-muted)" }}>
-            Set dates, define measurable key results, and review trajectory in a lightweight page that matches the task
-            workspace.
+            Set Jalali dates, define measurable key results, and review trajectory in a lightweight page that matches
+            the task workspace.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link href="/login" className="button-primary rounded-full px-5 py-3 text-sm font-semibold">
@@ -378,7 +620,7 @@ function GuestOkrPage() {
               <div>
                 <p className="text-sm font-semibold">Build a weekly planning habit</p>
                 <p className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
-                  Apr 1, 2025 - Jun 30, 2025
+                  1404/01/12 - 1404/04/10
                 </p>
               </div>
               <span className="rounded-full px-3 py-1 text-xs font-medium" style={healthStyle("on_track")}>
@@ -394,15 +636,15 @@ function GuestOkrPage() {
                 </p>
               </div>
               <div className="mt-2">
-                <ProgressBar value={72} />
+                <ProgressBar value={72} expectedValue={58} />
               </div>
             </div>
 
             <div className="mt-5 space-y-3">
               {[
-                ["Weekly review sessions", "Start 0, now 8, target 12", "Ahead"],
-                ["Protected deep-work blocks", "Start 0, now 21, target 30", "On track"],
-              ].map(([titleText, metric, label]) => (
+                ["Weekly review sessions", "Start 0, now 8, target 12", "Ahead", 66, 54],
+                ["Protected deep-work blocks", "Start 0, now 21, target 30", "On track", 70, 68],
+              ].map(([titleText, metric, label, value, expected]) => (
                 <div key={titleText} className="surface-subtle rounded-3xl px-4 py-3">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-medium">{titleText}</p>
@@ -413,6 +655,9 @@ function GuestOkrPage() {
                   <p className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
                     {metric}
                   </p>
+                  <div className="mt-2">
+                    <ProgressBar value={value as number} expectedValue={expected as number} />
+                  </div>
                 </div>
               ))}
             </div>
@@ -442,8 +687,8 @@ export default function OkrsPage() {
   const [objectiveEditor, setObjectiveEditor] = useState<ObjectiveEditorState>(null);
   const [objectiveTitle, setObjectiveTitle] = useState("");
   const [objectiveDescription, setObjectiveDescription] = useState("");
-  const [objectiveStartDate, setObjectiveStartDate] = useState(localTodayString());
-  const [objectiveEndDate, setObjectiveEndDate] = useState(localTodayString());
+  const [objectiveStartDate, setObjectiveStartDate] = useState<JalaliDateParts>({ ...EMPTY_JALALI_DATE });
+  const [objectiveEndDate, setObjectiveEndDate] = useState<JalaliDateParts>({ ...EMPTY_JALALI_DATE });
   const [isObjectiveSaving, setIsObjectiveSaving] = useState(false);
   const [keyResultEditor, setKeyResultEditor] = useState<KeyResultEditorState>(null);
   const [keyResultTitle, setKeyResultTitle] = useState("");
@@ -454,6 +699,7 @@ export default function OkrsPage() {
   const [keyResultUnit, setKeyResultUnit] = useState("");
   const [isKeyResultSaving, setIsKeyResultSaving] = useState(false);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation>(null);
+  const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
   const [busyActionKey, setBusyActionKey] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const toastTimeoutsRef = useRef<number[]>([]);
@@ -484,6 +730,18 @@ export default function OkrsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (target.closest("[data-action-menu-root]")) return;
+      setOpenMenuKey(null);
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, []);
+
   const syncObjective = useCallback((updatedObjective: Okr) => {
     setOkrs((current) => {
       const exists = current.some((item) => item.id === updatedObjective.id);
@@ -496,6 +754,17 @@ export default function OkrsPage() {
 
   const removeObjective = useCallback((objectiveId: number) => {
     setOkrs((current) => current.filter((item) => item.id !== objectiveId));
+  }, []);
+
+  const handleObjectiveDateChange = useCallback((field: "start" | "end", part: keyof JalaliDateParts, rawValue: string) => {
+    const sanitized = rawValue.replace(/\D/g, "").slice(0, part === "year" ? 4 : 2);
+
+    if (field === "start") {
+      setObjectiveStartDate((current) => ({ ...current, [part]: sanitized }));
+      return;
+    }
+
+    setObjectiveEndDate((current) => ({ ...current, [part]: sanitized }));
   }, []);
 
   const loadOkrs = useCallback(async () => {
@@ -540,14 +809,10 @@ export default function OkrsPage() {
   );
 
   function resetObjectiveForm() {
-    const todayValue = localTodayString();
-    const future = new Date(parseDateString(todayValue).getTime() + 90 * DAY_IN_MS);
-    const futureLabel = `${future.getUTCFullYear()}-${String(future.getUTCMonth() + 1).padStart(2, "0")}-${String(future.getUTCDate()).padStart(2, "0")}`;
-
     setObjectiveTitle("");
     setObjectiveDescription("");
-    setObjectiveStartDate(todayValue);
-    setObjectiveEndDate(futureLabel);
+    setObjectiveStartDate(toJalaliDateParts(localTodayString()));
+    setObjectiveEndDate(toJalaliDateParts(futureDateString(90)));
   }
 
   function openCreateObjectiveModal() {
@@ -558,8 +823,8 @@ export default function OkrsPage() {
   function openEditObjectiveModal(objective: Okr) {
     setObjectiveTitle(objective.title);
     setObjectiveDescription(objective.description ?? "");
-    setObjectiveStartDate(objective.start_date);
-    setObjectiveEndDate(objective.end_date);
+    setObjectiveStartDate(toJalaliDateParts(objective.start_date));
+    setObjectiveEndDate(toJalaliDateParts(objective.end_date));
     setObjectiveEditor({ mode: "edit", objective });
   }
 
@@ -588,19 +853,21 @@ export default function OkrsPage() {
     const cleanedTitle = objectiveTitle.trim();
     if (!cleanedTitle) return;
 
-    if (objectiveEndDate < objectiveStartDate) {
-      pushToast("error", "End date must be on or after start date.");
-      return;
-    }
-
     setIsObjectiveSaving(true);
 
     try {
+      const startDate = toGregorianDateString(objectiveStartDate);
+      const endDate = toGregorianDateString(objectiveEndDate);
+
+      if (endDate < startDate) {
+        throw new Error("End date must be on or after start date.");
+      }
+
       const payload = {
         title: cleanedTitle,
         description: objectiveDescription.trim() ? objectiveDescription.trim() : null,
-        start_date: objectiveStartDate,
-        end_date: objectiveEndDate,
+        start_date: startDate,
+        end_date: endDate,
       };
 
       const response =
@@ -614,6 +881,7 @@ export default function OkrsPage() {
 
       const updatedObjective = (await response.json()) as Okr;
       syncObjective(updatedObjective);
+      setOpenMenuKey(null);
       closeObjectiveModal(true);
       pushToast("success", objectiveEditor?.mode === "edit" ? "Objective updated." : "Objective created.");
     } catch (error) {
@@ -669,6 +937,7 @@ export default function OkrsPage() {
 
       const updatedObjective = (await response.json()) as Okr;
       syncObjective(updatedObjective);
+      setOpenMenuKey(null);
       closeKeyResultModal(true);
       pushToast("success", keyResultEditor.keyResult ? "Key result updated." : "Key result added.");
     } catch (error) {
@@ -678,7 +947,7 @@ export default function OkrsPage() {
     }
   }
 
-  async function handleAdjustKeyResult(objective: Okr, keyResult: KeyResult, direction: "increase" | "decrease") {
+  async function handleAdjustKeyResult(keyResult: KeyResult, direction: "increase" | "decrease") {
     const delta = direction === "increase" ? keyResult.step_value : -keyResult.step_value;
     setBusyActionKey(`adjust-${keyResult.id}-${direction}`);
 
@@ -713,6 +982,7 @@ export default function OkrsPage() {
 
       const updatedObjective = (await response.json()) as Okr;
       syncObjective(updatedObjective);
+      setOpenMenuKey(null);
       pushToast("success", objective.is_archived ? "Objective restored." : "Objective archived.");
     } catch (error) {
       pushToast("error", error instanceof Error ? error.message : "Failed to update objective");
@@ -733,6 +1003,7 @@ export default function OkrsPage() {
 
       removeObjective(objective.id);
       setPendingConfirmation(null);
+      setOpenMenuKey(null);
       pushToast("success", "Objective removed.");
     } catch (error) {
       pushToast("error", error instanceof Error ? error.message : "Failed to remove objective");
@@ -759,6 +1030,7 @@ export default function OkrsPage() {
         ),
       );
       setPendingConfirmation(null);
+      setOpenMenuKey(null);
       pushToast("success", "Key result removed.");
     } catch (error) {
       pushToast("error", error instanceof Error ? error.message : "Failed to remove key result");
@@ -804,9 +1076,9 @@ export default function OkrsPage() {
 
       <section className="px-1 pb-5">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div>
+          <div className="min-w-0 flex-1">
             <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">My OKRs</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 sm:text-base" style={{ color: "var(--foreground-muted)" }}>
+            <p className="mt-2 max-w-4xl text-sm leading-6 sm:text-base" style={{ color: "var(--foreground-muted)" }}>
               A lightweight personal system: set a dated objective, define a few measurable outcomes, and catch drift
               early.
             </p>
@@ -913,118 +1185,86 @@ export default function OkrsPage() {
             ) : null}
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="grid gap-4 xl:grid-cols-2">
             {visibleOkrs.map((okr) => {
               const progress = objectiveProgress(okr);
               const timeline = timelineSummary(okr, today);
               const archiveBusyKey = `${okr.is_archived ? "restore" : "archive"}-${okr.id}`;
+              const objectiveMenuKey = `objective-${okr.id}`;
 
               return (
                 <article key={okr.id} className="surface-card group rounded-[32px] p-5 sm:p-6">
-                  <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className="rounded-full px-3 py-1 text-xs font-medium"
-                          style={
-                            okr.is_archived
-                              ? {
-                                  backgroundColor: "color-mix(in srgb, var(--background-subtle) 92%, transparent)",
-                                  color: "var(--foreground-muted)",
-                                }
-                              : {
-                                  backgroundColor: "color-mix(in srgb, var(--accent-tint) 70%, transparent)",
-                                  color: "var(--accent)",
-                                }
-                          }
-                        >
-                          {okr.is_archived ? "Archived" : "Active"}
-                        </span>
-                        <span
-                          className="rounded-full px-3 py-1 text-xs font-medium"
-                          style={{
-                            backgroundColor: "color-mix(in srgb, var(--background-elevated) 88%, transparent)",
-                            color: "var(--foreground-muted)",
-                          }}
-                        >
-                          {formatDateRange(okr.start_date, okr.end_date)}
-                        </span>
-                      </div>
-
-                      <h3 className="mt-4 text-2xl font-semibold tracking-tight">{okr.title}</h3>
-                      <p className="mt-2 max-w-3xl whitespace-pre-wrap text-sm leading-7" style={{ color: "var(--foreground-muted)" }}>
+                      <h3 className="pr-2 text-2xl font-semibold tracking-tight">{okr.title}</h3>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-7" style={{ color: "var(--foreground-muted)" }}>
                         {okr.description?.trim() || "Add a short note so the objective has a clear intent behind it."}
                       </p>
 
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <span
-                          className="rounded-full px-3 py-1 text-xs font-medium"
-                          style={{
-                            backgroundColor: "color-mix(in srgb, var(--background-elevated) 88%, transparent)",
-                            color: "var(--foreground-muted)",
-                          }}
-                        >
-                          {timeline.label}
-                        </span>
-                        <span
-                          className="rounded-full px-3 py-1 text-xs font-medium"
-                          style={{
-                            backgroundColor: "color-mix(in srgb, var(--background-elevated) 88%, transparent)",
-                            color: "var(--foreground-muted)",
-                          }}
-                        >
-                          {timeline.secondary}
-                        </span>
+                      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs" style={{ color: "var(--foreground-muted)" }}>
+                        <MetaItem icon={<Target className="h-3.5 w-3.5" aria-hidden="true" />}>
+                          {okr.is_archived ? "Archived" : "Active"}
+                        </MetaItem>
+                        <MetaItem icon={<CalendarRange className="h-3.5 w-3.5" aria-hidden="true" />}>
+                          {formatJalaliDateRange(okr.start_date, okr.end_date)}
+                        </MetaItem>
+                        <MetaItem icon={<Clock3 className="h-3.5 w-3.5" aria-hidden="true" />}>{timeline.label}</MetaItem>
+                        <MetaItem icon={<Gauge className="h-3.5 w-3.5" aria-hidden="true" />}>{timeline.secondary}</MetaItem>
+                        <MetaItem icon={<ListTodo className="h-3.5 w-3.5" aria-hidden="true" />}>
+                          {okr.key_results.length} KRs
+                        </MetaItem>
+                        <MetaItem icon={<Gauge className="h-3.5 w-3.5" aria-hidden="true" />}>
+                          {Math.round(progress)}% complete
+                        </MetaItem>
                       </div>
                     </div>
-
-                    <div className="flex items-start gap-3">
-                      <div
-                        className="min-w-[220px] rounded-[28px] border px-4 py-4"
-                        style={{ borderColor: "color-mix(in srgb, var(--card-border) 72%, transparent)" }}
+                    <ActionMenu
+                      menuKey={objectiveMenuKey}
+                      openMenuKey={openMenuKey}
+                      onToggle={(menuKey) => setOpenMenuKey((current) => (current === menuKey ? null : menuKey))}
+                    >
+                      <ActionMenuItem
+                        onClick={() => {
+                          setOpenMenuKey(null);
+                          openKeyResultModal(okr);
+                        }}
                       >
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm font-semibold">Objective progress</p>
-                          <p className="text-sm font-semibold">{Math.round(progress)}%</p>
-                        </div>
-                        <div className="mt-3">
-                          <ProgressBar value={progress} />
-                        </div>
-                        <div className="mt-3 flex items-center justify-between gap-3 text-xs" style={{ color: "var(--foreground-muted)" }}>
-                          <span>{okr.key_results.length} key results</span>
-                          <span>{okr.is_archived ? "Health paused" : "Checked against timeline"}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col gap-2">
-                        <HoverAction title="Add key result" onClick={() => openKeyResultModal(okr)}>
-                          <Plus className="h-4 w-4" aria-hidden="true" />
-                        </HoverAction>
-                        <HoverAction title="Edit objective" onClick={() => openEditObjectiveModal(okr)}>
-                          <PencilLine className="h-4 w-4" aria-hidden="true" />
-                        </HoverAction>
-                        <HoverAction
-                          title={okr.is_archived ? "Restore objective" : "Archive objective"}
-                          onClick={() => void handleArchiveToggle(okr)}
-                          disabled={busyActionKey === archiveBusyKey}
-                        >
-                          {busyActionKey === archiveBusyKey ? (
-                            <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
-                          ) : okr.is_archived ? (
-                            <RotateCcw className="h-4 w-4" aria-hidden="true" />
-                          ) : (
-                            <Archive className="h-4 w-4" aria-hidden="true" />
-                          )}
-                        </HoverAction>
-                        <HoverAction
-                          title="Delete objective"
-                          tone="danger"
-                          onClick={() => setPendingConfirmation({ kind: "objective", objective: okr })}
-                        >
-                          <Trash2 className="h-4 w-4" aria-hidden="true" />
-                        </HoverAction>
-                      </div>
-                    </div>
+                        <span>Add key result</span>
+                        <Plus className="h-4 w-4" aria-hidden="true" />
+                      </ActionMenuItem>
+                      <ActionMenuItem
+                        onClick={() => {
+                          setOpenMenuKey(null);
+                          openEditObjectiveModal(okr);
+                        }}
+                      >
+                        <span>Edit objective</span>
+                        <PencilLine className="h-4 w-4" aria-hidden="true" />
+                      </ActionMenuItem>
+                      <ActionMenuItem
+                        disabled={busyActionKey === archiveBusyKey}
+                        onClick={() => void handleArchiveToggle(okr)}
+                      >
+                        <span>{okr.is_archived ? "Restore objective" : "Archive objective"}</span>
+                        {busyActionKey === archiveBusyKey ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        ) : okr.is_archived ? (
+                          <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                        ) : (
+                          <Archive className="h-4 w-4" aria-hidden="true" />
+                        )}
+                      </ActionMenuItem>
+                      <ActionMenuItem
+                        tone="danger"
+                        onClick={() => {
+                          setOpenMenuKey(null);
+                          setPendingConfirmation({ kind: "objective", objective: okr });
+                        }}
+                      >
+                        <span>Delete objective</span>
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </ActionMenuItem>
+                    </ActionMenu>
                   </div>
 
                   <div className="mt-6 space-y-3">
@@ -1044,14 +1284,18 @@ export default function OkrsPage() {
                     ) : (
                       okr.key_results.map((keyResult) => {
                         const health = keyResultHealth(okr, keyResult, today);
+                        const actualProgress = keyResultProgressPercent(keyResult);
+                        const expectedValue = okr.is_archived ? null : timelineRatio(okr, today) * 100;
+                        const expectedMetricValue = okr.is_archived ? null : keyResultExpectedValue(okr, keyResult, today);
                         const adjustDownKey = `adjust-${keyResult.id}-decrease`;
                         const adjustUpKey = `adjust-${keyResult.id}-increase`;
+                        const keyResultMenuKey = `key-result-${keyResult.id}`;
 
                         return (
                           <article key={keyResult.id} className="surface-subtle group rounded-[28px] px-4 py-4">
-                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="flex items-start justify-between gap-4">
                               <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center gap-2">
+                                <div className="flex flex-wrap items-center gap-2 pr-2">
                                   <p className="text-base font-semibold">{keyResult.title}</p>
                                   {health ? (
                                     <span className="rounded-full px-2.5 py-1 text-xs font-medium" style={healthStyle(health)}>
@@ -1070,83 +1314,63 @@ export default function OkrsPage() {
                                   )}
                                 </div>
 
-                                <p className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
-                                  Start {formatMetricValue(keyResult.start_value)}, now {formatMetricValue(keyResult.current_value)}, target{" "}
-                                  {formatMetricValue(keyResult.target_value)}
-                                  {keyResult.unit ? ` ${keyResult.unit}` : ""}
-                                </p>
-                                <p className="mt-1 text-xs" style={{ color: "var(--foreground-muted)" }}>
-                                  Step {formatMetricValue(keyResult.step_value)}
-                                  {keyResult.unit ? ` ${keyResult.unit}` : ""}
-                                </p>
-
-                                <div className="mt-3">
-                                  <ProgressBar value={keyResultProgressPercent(keyResult)} />
+                                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
+                                  <span>
+                                    {`${formatMetricValue(keyResult.start_value)} -> ${formatMetricValue(keyResult.current_value)} -> ${formatMetricValue(keyResult.target_value)}`}
+                                    {keyResult.unit ? ` ${keyResult.unit}` : ""}
+                                  </span>
+                                  {!okr.is_archived && expectedMetricValue !== null ? (
+                                    <span>
+                                      Expected now {formatMetricValue(expectedMetricValue)}
+                                      {keyResult.unit ? ` ${keyResult.unit}` : ""}
+                                    </span>
+                                  ) : null}
                                 </div>
                               </div>
-
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className="inline-flex items-center gap-1 rounded-full border px-1 py-1"
-                                  style={{
-                                    borderColor: "color-mix(in srgb, var(--card-border) 72%, transparent)",
-                                    backgroundColor: "color-mix(in srgb, var(--background-elevated) 88%, transparent)",
-                                  }}
+                              <div className="shrink-0">
+                                <ActionMenu
+                                  menuKey={keyResultMenuKey}
+                                  openMenuKey={openMenuKey}
+                                  onToggle={(menuKey) => setOpenMenuKey((current) => (current === menuKey ? null : menuKey))}
                                 >
-                                  <button
-                                    type="button"
-                                    aria-label="Decrease current value"
-                                    title="Decrease current value"
-                                    disabled={busyActionKey === adjustDownKey}
-                                    onClick={() => void handleAdjustKeyResult(okr, keyResult, "decrease")}
-                                    className="flex h-9 w-9 items-center justify-center rounded-full"
-                                    style={{ color: "var(--foreground-muted)" }}
+                                  <ActionMenuStepper
+                                    value={keyResult.current_value}
+                                    step={keyResult.step_value}
+                                    unit={keyResult.unit}
+                                    isIncreaseBusy={busyActionKey === adjustUpKey}
+                                    isDecreaseBusy={busyActionKey === adjustDownKey}
+                                    onIncrease={() => void handleAdjustKeyResult(keyResult, "increase")}
+                                    onDecrease={() => void handleAdjustKeyResult(keyResult, "decrease")}
+                                  />
+                                  <ActionMenuItem
+                                    onClick={() => {
+                                      setOpenMenuKey(null);
+                                      openKeyResultModal(okr, keyResult);
+                                    }}
                                   >
-                                    {busyActionKey === adjustDownKey ? (
-                                      <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
-                                    ) : (
-                                      <Minus className="h-4 w-4" aria-hidden="true" />
-                                    )}
-                                  </button>
-                                  <span className="min-w-16 text-center text-sm font-semibold">
-                                    {formatMetricValue(keyResult.current_value)}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    aria-label="Increase current value"
-                                    title="Increase current value"
-                                    disabled={busyActionKey === adjustUpKey}
-                                    onClick={() => void handleAdjustKeyResult(okr, keyResult, "increase")}
-                                    className="flex h-9 w-9 items-center justify-center rounded-full"
-                                    style={{ color: "var(--foreground-muted)" }}
-                                  >
-                                    {busyActionKey === adjustUpKey ? (
-                                      <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
-                                    ) : (
-                                      <Plus className="h-4 w-4" aria-hidden="true" />
-                                    )}
-                                  </button>
-                                </div>
-
-                                <div className="flex gap-2">
-                                  <HoverAction title="Edit key result" onClick={() => openKeyResultModal(okr, keyResult)}>
+                                    <span>Edit key result</span>
                                     <PencilLine className="h-4 w-4" aria-hidden="true" />
-                                  </HoverAction>
-                                  <HoverAction
-                                    title="Delete key result"
+                                  </ActionMenuItem>
+                                  <ActionMenuItem
                                     tone="danger"
-                                    onClick={() =>
+                                    onClick={() => {
+                                      setOpenMenuKey(null);
                                       setPendingConfirmation({
                                         kind: "key_result",
                                         objectiveTitle: okr.title,
                                         keyResult,
-                                      })
-                                    }
+                                      });
+                                    }}
                                   >
+                                    <span>Delete key result</span>
                                     <Trash2 className="h-4 w-4" aria-hidden="true" />
-                                  </HoverAction>
-                                </div>
+                                  </ActionMenuItem>
+                                </ActionMenu>
                               </div>
+                            </div>
+
+                            <div className="mt-4">
+                              <ProgressBar value={actualProgress} expectedValue={expectedValue} />
                             </div>
                           </article>
                         );
@@ -1164,7 +1388,7 @@ export default function OkrsPage() {
         isOpen={objectiveEditor !== null}
         onClose={() => closeObjectiveModal()}
         title={objectiveEditor?.mode === "edit" ? "Edit objective" : "Create objective"}
-        description="Use a start date and end date so key results can be judged against time, not only raw totals."
+        description="Use Jalali dates so the expected-progress marker reflects a real time window."
       >
         <form onSubmit={handleSaveObjective} className="space-y-4">
           <div>
@@ -1195,40 +1419,25 @@ export default function OkrsPage() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label htmlFor="okr-start-date" className="text-sm font-semibold">
-                Start date
-              </label>
-              <input
-                id="okr-start-date"
-                type="date"
-                value={objectiveStartDate}
-                onChange={(event) => setObjectiveStartDate(event.target.value)}
-                className="field mt-2 rounded-2xl px-4 py-3 text-sm"
-                required
-              />
-            </div>
-
-            <div>
-              <label htmlFor="okr-end-date" className="text-sm font-semibold">
-                End date
-              </label>
-              <input
-                id="okr-end-date"
-                type="date"
-                value={objectiveEndDate}
-                onChange={(event) => setObjectiveEndDate(event.target.value)}
-                className="field mt-2 rounded-2xl px-4 py-3 text-sm"
-                required
-              />
-            </div>
+            <JalaliDateInput
+              label="Start date (Jalali)"
+              value={objectiveStartDate}
+              prefix="okr-start-date"
+              onChange={(part, nextValue) => handleObjectiveDateChange("start", part, nextValue)}
+            />
+            <JalaliDateInput
+              label="End date (Jalali)"
+              value={objectiveEndDate}
+              prefix="okr-end-date"
+              onChange={(part, nextValue) => handleObjectiveDateChange("end", part, nextValue)}
+            />
           </div>
 
           <InlineGuide
             title="Objective guide"
             items={[
               "Keep it qualitative and outcome-focused. Save the numbers for key results.",
-              "Use a real time window. Health labels become meaningful only when the dates are intentional.",
+              "Use a real time window. The progress marker shows where you should be by now.",
               "If this objective is no longer active, archive it instead of widening the active list.",
             ]}
           />
@@ -1257,7 +1466,7 @@ export default function OkrsPage() {
         isOpen={keyResultEditor !== null}
         onClose={() => closeKeyResultModal()}
         title={keyResultEditor?.keyResult ? "Edit key result" : "Add key result"}
-        description="Set the numeric starting point and target so the page can judge whether progress is ahead or slipping."
+        description="Set the numeric starting point and target so the bar can compare actual progress against expected progress."
       >
         <form onSubmit={handleSaveKeyResult} className="space-y-4">
           <div>
@@ -1349,7 +1558,7 @@ export default function OkrsPage() {
             title="Key result guide"
             items={[
               "Use a measurable metric, not a task list item.",
-              "Start and target can move up or down. The page compares current progress against the objective timeline.",
+              "The thin marker on the bar shows where the metric should be by now.",
               "Choose a step size that matches how you update this metric in real life.",
             ]}
           />
