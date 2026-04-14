@@ -1,7 +1,7 @@
 "use client";
 
 import { isValidJalaaliDate, toGregorian, toJalaali } from "jalaali-js";
-import { ArrowUp, CalendarDays, Check, CheckCircle2, Circle, Eraser, ListFilter, LoaderCircle, Sparkles } from "lucide-react";
+import { ArrowUp, CalendarDays, Check, CheckCircle2, Circle, Eraser, ListFilter, LoaderCircle, Sparkles, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -21,6 +21,7 @@ type Task = {
   status: TaskStatus;
   due_date: string | null;
   completed_at: string | null;
+  is_focused: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -42,7 +43,7 @@ type JalaliDateParts = {
   day: string;
 };
 
-const FILTER_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
+const FILTER_OPTIONS: Array<{ value: StatusFilter; label: string; icon: LucideIcon }> = [
   { value: "all", label: "All tasks", icon: ListFilter },
   { value: "active", label: "Undone tasks", icon: Circle },
   { value: "done", label: "Done tasks", icon: CheckCircle2 },
@@ -98,11 +99,10 @@ function toGregorianDateString(value: JalaliDateParts) {
   return `${gregorian.gy}-${String(gregorian.gm).padStart(2, "0")}-${String(gregorian.gd).padStart(2, "0")}`;
 }
 
-function summarizeNotes(value: string | null) {
-  if (!value) return null;
-  const trimmed = value.trim();
-  if (trimmed.length <= 128) return trimmed;
-  return `${trimmed.slice(0, 125)}...`;
+function formatTaskStatus(status: TaskStatus) {
+  if (status === "in_progress") return "In progress";
+  if (status === "done") return "Done";
+  return "To do";
 }
 
 function hasSessionCookie() {
@@ -302,6 +302,7 @@ export default function HomePage() {
   const [editNotes, setEditNotes] = useState("");
   const [editDueDate, setEditDueDate] = useState<JalaliDateParts>({ ...EMPTY_JALALI_DATE });
   const [editStatus, setEditStatus] = useState<TaskStatus>("todo");
+  const [editIsFocused, setEditIsFocused] = useState(false);
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const toastTimeoutsRef = useRef<number[]>([]);
@@ -360,7 +361,16 @@ export default function HomePage() {
     void loadTasks();
   }, [authState, loadTasks]);
 
-  const visibleTasks = useMemo(() => filterTasks(tasks, statusFilter), [statusFilter, tasks]);
+  const filteredTasks = useMemo(() => filterTasks(tasks, statusFilter), [statusFilter, tasks]);
+  const focusedTask = useMemo(() => tasks.find((task) => task.is_focused) ?? null, [tasks]);
+  const visibleFocusedTask = useMemo(() => {
+    if (!focusedTask) return null;
+    return filterTasks([focusedTask], statusFilter)[0] ?? null;
+  }, [focusedTask, statusFilter]);
+  const visibleTasks = useMemo(
+    () => filteredTasks.filter((task) => task.id !== visibleFocusedTask?.id),
+    [filteredTasks, visibleFocusedTask],
+  );
   const totalTasksCount = tasks.length;
   const completedTasksCount = useMemo(() => tasks.filter(isDoneTask).length, [tasks]);
   const activeTasksCount = totalTasksCount - completedTasksCount;
@@ -375,10 +385,11 @@ export default function HomePage() {
     setEditNotes(task.notes ?? "");
     setEditDueDate(toJalaliDateParts(task.due_date));
     setEditStatus(task.status);
+    setEditIsFocused(task.is_focused);
   }, []);
 
-  const closeEditModal = useCallback(() => {
-    if (isEditSubmitting) return;
+  const closeEditModal = useCallback((force = false) => {
+    if (!force && isEditSubmitting) return;
     setEditingTask(null);
   }, [isEditSubmitting]);
 
@@ -400,6 +411,7 @@ export default function HomePage() {
         notes: null,
         status: "todo",
         due_date: null,
+        is_focused: false,
       });
 
       if (!response.ok) {
@@ -427,6 +439,7 @@ export default function HomePage() {
         notes: task.notes,
         status: nextStatus,
         due_date: task.due_date,
+        is_focused: task.is_focused,
       });
 
       if (!response.ok) {
@@ -460,17 +473,17 @@ export default function HomePage() {
         notes: editNotes.trim() ? editNotes.trim() : null,
         status: editStatus,
         due_date: dueDate,
+        is_focused: editIsFocused,
       });
 
       if (!response.ok) {
         throw new Error(await readErrorMessage(response));
       }
 
-      const updatedTask = (await response.json()) as Task;
-      setTasks((current) => current.map((item) => (item.id === updatedTask.id ? updatedTask : item)));
-      setEditingTask(updatedTask);
-      pushToast("success", "Task updated.");
-      closeEditModal();
+      await response.json();
+      closeEditModal(true);
+      pushToast("success", editIsFocused ? "Focus task updated." : "Task updated.");
+      await loadTasks();
     } catch (error) {
       pushToast("error", error instanceof Error ? error.message : "Failed to update task");
     } finally {
@@ -529,7 +542,7 @@ export default function HomePage() {
     return <GuestHome />;
   }
 
-  const hasVisibleTasks = visibleTasks.length > 0;
+  const hasVisibleTasks = visibleFocusedTask !== null || visibleTasks.length > 0;
   const isConfirmationBusy = busyTaskAction === "delete" || isClearingCompleted;
 
   return (
@@ -587,6 +600,22 @@ export default function HomePage() {
               <span className="rounded-full px-3 py-1.5 text-xs font-medium" style={statusPillStyle("done")}>
                 {completedTasksCount} done
               </span>
+              <span
+                className="rounded-full px-3 py-1.5 text-xs font-medium"
+                style={
+                  focusedTask
+                    ? {
+                        backgroundColor: "color-mix(in srgb, var(--accent) 12%, var(--background-elevated))",
+                        color: "var(--accent)",
+                      }
+                    : {
+                        backgroundColor: "color-mix(in srgb, var(--background-elevated) 88%, transparent)",
+                        color: "var(--foreground-muted)",
+                      }
+                }
+              >
+                {focusedTask ? "1 primary focus" : "No focus selected"}
+              </span>
             </div>
           </div>
 
@@ -637,116 +666,194 @@ export default function HomePage() {
               ) : null}
             </div>
           ) : (
-            <ul
-              className="surface-card overflow-hidden"
-              style={{ borderRadius: "32px" }}
-              aria-live="polite"
-            >
-              {visibleTasks.map((task) => {
-                const isBusy = busyTaskId === task.id;
-                const isTogglingTask = isBusy && busyTaskAction === "toggle";
-                const dueLabel = formatDueDate(task.due_date);
-                const notePreview = summarizeNotes(task.notes);
+            <div className="space-y-4">
+              {visibleFocusedTask ? (
+                <article className="focus-task-card p-6 sm:p-7" aria-live="polite">
+                  <div className="focus-task-content flex flex-col gap-6">
+                    <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <span className="focus-task-badge inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em]">
+                          <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                          Primary focus
+                        </span>
+                        <h3
+                          className={`mt-4 text-2xl font-semibold tracking-tight sm:text-3xl ${
+                            visibleFocusedTask.status === "done" ? "line-through opacity-75" : ""
+                          }`}
+                        >
+                          {visibleFocusedTask.title}
+                        </h3>
+                        <p className="mt-3 max-w-3xl whitespace-pre-wrap text-sm leading-7 sm:text-base" style={{ color: "var(--foreground-muted)" }}>
+                          {visibleFocusedTask.notes?.trim() || "Add notes from task editing to keep the most useful context visible here."}
+                        </p>
+                      </div>
 
-                return (
-                  <li
-                    key={task.id}
-                    className="group border-b last:border-b-0"
-                    style={{
-                      borderColor: "color-mix(in srgb, var(--card-border) 42%, transparent)",
-                    }}
-                  >
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => openEditModal(task)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          openEditModal(task);
-                        }
-                      }}
-                      className="task-row flex gap-3 px-4 py-4 sm:px-6 sm:py-5"
-                      style={{
-                        backgroundColor: isBusy
-                          ? "color-mix(in srgb, var(--accent-tint) 18%, var(--background-elevated))"
-                          : undefined,
-                      }}
-                      aria-label={`Open details for ${task.title}`}
-                    >
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void handleToggleDone(task);
-                        }}
-                        onKeyDown={(event) => {
-                          event.stopPropagation();
-                        }}
-                        disabled={isBusy}
-                        aria-label={task.status === "done" ? `Mark ${task.title} as to do` : `Mark ${task.title} as done`}
-                        className="task-status-toggle flex h-11 w-11 shrink-0 self-start items-center justify-center rounded-full"
-                        style={
-                          task.status === "done"
-                            ? {
-                                backgroundColor: "var(--accent)",
-                                color: "#ffffff",
-                              }
-                            : {
-                                backgroundColor: "color-mix(in srgb, var(--background-elevated) 84%, var(--background))",
-                                color: "var(--foreground-muted)",
-                              }
-                        }
-                      >
-                        {isTogglingTask ? (
-                          <LoaderCircle className="h-5 w-5 animate-spin" aria-hidden="true" />
-                        ) : task.status === "done" ? (
-                          <Check className="h-5 w-5" aria-hidden="true" />
-                        ) : (
-                          <Circle className="h-5 w-5" aria-hidden="true" />
-                        )}
-                      </button>
-
-                      <div className="min-w-0 flex-1 px-2 py-0.5 text-left sm:px-3">
-                        <div className="flex flex-col gap-3">
-                          <div className="min-w-0">
-                            <div className="flex min-h-11 flex-wrap items-center justify-between gap-3">
-                              <h3 className={`text-base font-semibold sm:text-lg ${task.status === "done" ? "line-through opacity-70" : ""}`}>
-                                {task.title}
-                              </h3>
-                              {dueLabel ? (
-                                <span
-                                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium"
-                                  style={{
-                                    backgroundColor: "color-mix(in srgb, var(--background-subtle) 72%, transparent)",
-                                    color: "var(--foreground-muted)",
-                                  }}
-                                >
-                                  <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
-                                  {dueLabel}
-                                </span>
-                              ) : null}
-                            </div>
-
-                            {notePreview ? (
-                              <p className="mt-2 max-w-3xl text-sm leading-6" style={{ color: "var(--foreground-muted)" }}>
-                                {notePreview}
-                              </p>
-                            ) : null}
-                          </div>
-                        </div>
-
-                        {isTogglingTask ? (
-                          <p className="mt-3 text-xs" style={{ color: "var(--foreground-muted)" }}>
-                            Updating status...
-                          </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full px-3 py-1.5 text-xs font-medium" style={statusPillStyle(visibleFocusedTask.status)}>
+                          {formatTaskStatus(visibleFocusedTask.status)}
+                        </span>
+                        {visibleFocusedTask.due_date ? (
+                          <span
+                            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium"
+                            style={{
+                              backgroundColor: "color-mix(in srgb, var(--background-elevated) 74%, transparent)",
+                              color: "var(--foreground-muted)",
+                            }}
+                          >
+                            <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+                            {formatDueDate(visibleFocusedTask.due_date)}
+                          </span>
                         ) : null}
                       </div>
                     </div>
-                  </li>
-                );
-              })}
-            </ul>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => void handleToggleDone(visibleFocusedTask)}
+                        disabled={busyTaskId === visibleFocusedTask.id}
+                        className="button-secondary inline-flex h-11 items-center gap-2 rounded-full px-4 text-sm font-medium disabled:opacity-60"
+                      >
+                        {busyTaskId === visibleFocusedTask.id && busyTaskAction === "toggle" ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        ) : visibleFocusedTask.status === "done" ? (
+                          <Check className="h-4 w-4" aria-hidden="true" />
+                        ) : (
+                          <Circle className="h-4 w-4" aria-hidden="true" />
+                        )}
+                        {visibleFocusedTask.status === "done" ? "Move back to active" : "Mark as done"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(visibleFocusedTask)}
+                        className="button-primary inline-flex h-11 items-center rounded-full px-4 text-sm font-semibold"
+                      >
+                        Edit focus task
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ) : null}
+
+              {visibleTasks.length > 0 ? (
+                <section className="surface-card task-list-shell" style={{ borderRadius: "32px" }} aria-live="polite">
+                  <div className="task-list-header flex flex-col gap-2 px-4 py-4 sm:px-6">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="text-lg font-semibold">{visibleFocusedTask ? "Supporting tasks" : "Task list"}</h3>
+                      <span className="rounded-full px-3 py-1 text-xs font-medium" style={{ color: "var(--foreground-muted)" }}>
+                        {visibleTasks.length} shown
+                      </span>
+                    </div>
+                    <p className="text-sm leading-6" style={{ color: "var(--foreground-muted)" }}>
+                      {visibleFocusedTask
+                        ? "Descriptions stay tucked away here so the primary focus keeps the visual attention."
+                        : "Open any task to edit details or make it the primary focus."}
+                    </p>
+                  </div>
+
+                  <ul className="overflow-hidden">
+                    {visibleTasks.map((task) => {
+                      const isBusy = busyTaskId === task.id;
+                      const isTogglingTask = isBusy && busyTaskAction === "toggle";
+                      const dueLabel = formatDueDate(task.due_date);
+
+                      return (
+                        <li
+                          key={task.id}
+                          className="group border-b last:border-b-0"
+                          style={{
+                            borderColor: "color-mix(in srgb, var(--card-border) 42%, transparent)",
+                          }}
+                        >
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => openEditModal(task)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                openEditModal(task);
+                              }
+                            }}
+                            className="task-row task-row-compact flex gap-3 px-4 py-4 sm:px-6 sm:py-5"
+                            style={{
+                              backgroundColor: isBusy
+                                ? "color-mix(in srgb, var(--accent-tint) 18%, var(--background-elevated))"
+                                : undefined,
+                            }}
+                            aria-label={`Open details for ${task.title}`}
+                          >
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void handleToggleDone(task);
+                              }}
+                              onKeyDown={(event) => {
+                                event.stopPropagation();
+                              }}
+                              disabled={isBusy}
+                              aria-label={task.status === "done" ? `Mark ${task.title} as to do` : `Mark ${task.title} as done`}
+                              className="task-status-toggle flex h-11 w-11 shrink-0 self-start items-center justify-center rounded-full"
+                              style={
+                                task.status === "done"
+                                  ? {
+                                      backgroundColor: "var(--accent)",
+                                      color: "#ffffff",
+                                    }
+                                  : {
+                                      backgroundColor: "color-mix(in srgb, var(--background-elevated) 84%, var(--background))",
+                                      color: "var(--foreground-muted)",
+                                    }
+                              }
+                            >
+                              {isTogglingTask ? (
+                                <LoaderCircle className="h-5 w-5 animate-spin" aria-hidden="true" />
+                              ) : task.status === "done" ? (
+                                <Check className="h-5 w-5" aria-hidden="true" />
+                              ) : (
+                                <Circle className="h-5 w-5" aria-hidden="true" />
+                              )}
+                            </button>
+
+                            <div className="min-w-0 flex-1 px-2 py-0.5 text-left sm:px-3">
+                              <div className="flex min-h-11 flex-wrap items-center justify-between gap-3">
+                                <h3 className={`text-base font-semibold sm:text-lg ${task.status === "done" ? "line-through opacity-70" : ""}`}>
+                                  {task.title}
+                                </h3>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="rounded-full px-3 py-1 text-xs font-medium" style={statusPillStyle(task.status)}>
+                                    {formatTaskStatus(task.status)}
+                                  </span>
+                                  {dueLabel ? (
+                                    <span
+                                      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium"
+                                      style={{
+                                        backgroundColor: "color-mix(in srgb, var(--background-subtle) 72%, transparent)",
+                                        color: "var(--foreground-muted)",
+                                      }}
+                                    >
+                                      <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+                                      {dueLabel}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+
+                              {isTogglingTask ? (
+                                <p className="mt-3 text-xs" style={{ color: "var(--foreground-muted)" }}>
+                                  Updating status...
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              ) : null}
+            </div>
           )}
         </div>
       </section>
@@ -792,7 +899,7 @@ export default function HomePage() {
         isOpen={editingTask !== null}
         onClose={closeEditModal}
         title="Edit task"
-        description="Update the title, notes, Jalali due date, or status."
+        description="Update the title, notes, Jalali due date, status, or focus state."
       >
         <form onSubmit={handleUpdateTask} className="space-y-4">
           <div>
@@ -877,6 +984,34 @@ export default function HomePage() {
             </div>
           </div>
 
+          <div
+            className="rounded-[24px] border px-4 py-4"
+            style={{
+              borderColor: "color-mix(in srgb, var(--card-border) 72%, transparent)",
+              backgroundColor: editIsFocused
+                ? "color-mix(in srgb, var(--accent-tint) 62%, var(--background-elevated))"
+                : "color-mix(in srgb, var(--background-elevated) 86%, transparent)",
+            }}
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold">Primary focus</p>
+                <p className="mt-1 text-xs leading-6" style={{ color: "var(--foreground-muted)" }}>
+                  The focused task is pinned above the rest and keeps its description visible.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setEditIsFocused((current) => !current)}
+                aria-pressed={editIsFocused}
+                className={`${editIsFocused ? "button-primary" : "button-secondary"} inline-flex h-11 items-center rounded-full px-4 text-sm font-semibold`}
+              >
+                {editIsFocused ? "Focused task" : "Set as focus"}
+              </button>
+            </div>
+          </div>
+
           <div className="flex flex-wrap items-center justify-between gap-2">
             <button
               type="button"
@@ -894,7 +1029,7 @@ export default function HomePage() {
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={closeEditModal}
+                onClick={() => closeEditModal()}
                 disabled={isEditSubmitting}
                 className="button-secondary rounded-2xl px-4 py-3 text-sm font-medium"
               >

@@ -7,6 +7,7 @@ import {
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
+  Target,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -22,11 +23,12 @@ type NavItem = {
   href: string;
   label: string;
   description: string;
-  icon: "tasks" | "admin";
+  icon: "tasks" | "okrs" | "admin";
 };
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Tasks", description: "Task space", icon: "tasks" },
+  { href: "/okrs", label: "OKRs", description: "Goal tracking", icon: "okrs" },
   { href: "/admin", label: "Admin", description: "Workspace controls", icon: "admin" },
 ];
 
@@ -35,6 +37,10 @@ function NavIcon({ icon, active }: { icon: NavItem["icon"]; active: boolean }) {
 
   if (icon === "admin") {
     return <LayoutGrid aria-hidden="true" className={className} color={active ? "var(--accent)" : "var(--foreground-muted)"} />;
+  }
+
+  if (icon === "okrs") {
+    return <Target aria-hidden="true" className={className} color={active ? "var(--accent)" : "var(--foreground-muted)"} />;
   }
 
   return <ListTodo aria-hidden="true" className={className} color={active ? "var(--accent)" : "var(--foreground-muted)"} />;

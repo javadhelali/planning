@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.routes.auth import router as auth_router
+from api.routes.okrs import router as okrs_router
 from api.routes.planning import router as planning_router
 from config import settings
 
@@ -15,6 +16,7 @@ app.add_middleware(
 )
 
 app.include_router(planning_router)
+app.include_router(okrs_router)
 app.include_router(auth_router)
 
 @app.get("/api/ping")

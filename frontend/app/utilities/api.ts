@@ -53,6 +53,10 @@ export async function put(path: string, body: RequestBody) {
   return request(path, { method: "PUT", body });
 }
 
+export async function patch(path: string, body: RequestBody) {
+  return request(path, { method: "PATCH", body });
+}
+
 export async function del(path: string) {
   return request(path, { method: "DELETE" });
 }

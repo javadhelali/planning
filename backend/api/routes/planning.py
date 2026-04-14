@@ -24,6 +24,7 @@ class TaskCreateRequest(BaseModel):
     notes: str | None = None
     status: TaskStatus = "todo"
     due_date: date | None = None
+    is_focused: bool = False
 
 
 class TaskUpdateRequest(BaseModel):
@@ -31,6 +32,7 @@ class TaskUpdateRequest(BaseModel):
     notes: str | None = None
     status: TaskStatus
     due_date: date | None = None
+    is_focused: bool
 
 
 class TaskResponse(BaseModel):
@@ -41,6 +43,7 @@ class TaskResponse(BaseModel):
     status: TaskStatus
     due_date: date | None
     completed_at: datetime | None
+    is_focused: bool
     created_at: datetime
     updated_at: datetime
 
@@ -79,6 +82,7 @@ async def create_task_route(
         status=payload.status,
         due_date=payload.due_date,
         completed_at=resolved_completed_at(payload.status),
+        is_focused=payload.is_focused,
     )
     if task is None:
         raise HTTPException(status_code=500, detail="Failed to create task")
@@ -105,6 +109,7 @@ async def update_task_route(
         status=payload.status,
         due_date=payload.due_date,
         completed_at=resolved_completed_at(payload.status),
+        is_focused=payload.is_focused,
     )
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")

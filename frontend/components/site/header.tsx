@@ -13,6 +13,7 @@ export default function Header({ isAuthenticated }: HeaderProps) {
   const navItems = isAuthenticated
     ? [
         { href: "/", label: "Tasks" },
+        { href: "/okrs", label: "OKRs" },
         { href: "/admin", label: "Admin" },
       ]
     : [{ href: "/", label: "Overview" }];
