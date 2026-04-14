@@ -39,17 +39,24 @@ async def create_task(
     is_focused: bool,
 ) -> dict | None:
     query = f"""
-        with reset_focus as (
+        with lock_user as (
+            select pg_advisory_xact_lock((9011::bigint * 4294967296) + ($1::bigint & 4294967295))
+        ),
+        reset_focus as (
             update tasks
             set is_focused = false,
                 updated_at = now()
             where user_id = $1
               and is_focused = true
               and $7::boolean = true
+              and exists (select 1 from lock_user)
+            returning id
         ),
         inserted as (
             insert into tasks (user_id, title, notes, status, due_date, completed_at, is_focused)
-            values ($1, $2, $3, $4, $5, $6, $7)
+            select $1, $2, $3, $4, $5, $6, $7
+            from lock_user
+            left join lateral (select 1 from reset_focus limit 1) rf on true
             returning {TASK_COLUMNS}
         )
         select * from inserted
@@ -71,7 +78,10 @@ async def update_task(
     is_focused: bool,
 ) -> dict | None:
     query = f"""
-        with target as (
+        with lock_user as (
+            select pg_advisory_xact_lock((9011::bigint * 4294967296) + ($2::bigint & 4294967295))
+        ),
+        target as (
             select id
             from tasks
             where id = $1
@@ -86,9 +96,11 @@ async def update_task(
               and id <> $1
               and $8::boolean = true
               and exists (select 1 from target)
+              and exists (select 1 from lock_user)
+            returning id
         ),
         updated as (
-            update tasks
+            update tasks as t
             set
                 title = $3,
                 notes = $4,
@@ -97,8 +109,20 @@ async def update_task(
                 completed_at = $7,
                 is_focused = $8,
                 updated_at = now()
-            where id in (select id from target)
-            returning {TASK_COLUMNS}
+            from target
+            left join lateral (select 1 from reset_focus limit 1) rf on true
+            where t.id = target.id
+            returning
+                t.id,
+                t.user_id,
+                t.title,
+                t.notes,
+                t.status,
+                t.due_date,
+                t.completed_at,
+                t.is_focused,
+                t.created_at,
+                t.updated_at
         )
         select * from updated
     """

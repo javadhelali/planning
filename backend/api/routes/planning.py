@@ -16,7 +16,7 @@ from repositories.tasks import (
 router = APIRouter(prefix="/planning", tags=["planning"])
 
 
-TaskStatus = Literal["todo", "in_progress", "done"]
+TaskStatus = Literal["todo", "done"]
 
 
 class TaskCreateRequest(BaseModel):
@@ -62,6 +62,12 @@ def resolved_completed_at(status_value: TaskStatus) -> datetime | None:
     return None
 
 
+def resolved_is_focused(status_value: TaskStatus, is_focused: bool) -> bool:
+    if status_value == "done":
+        return False
+    return is_focused
+
+
 @router.get("/tasks", response_model=list[TaskResponse])
 async def get_tasks(
     status_filter: TaskStatus | None = Query(default=None, alias="status"),
@@ -82,7 +88,7 @@ async def create_task_route(
         status=payload.status,
         due_date=payload.due_date,
         completed_at=resolved_completed_at(payload.status),
-        is_focused=payload.is_focused,
+        is_focused=resolved_is_focused(payload.status, payload.is_focused),
     )
     if task is None:
         raise HTTPException(status_code=500, detail="Failed to create task")
@@ -109,7 +115,7 @@ async def update_task_route(
         status=payload.status,
         due_date=payload.due_date,
         completed_at=resolved_completed_at(payload.status),
-        is_focused=payload.is_focused,
+        is_focused=resolved_is_focused(payload.status, payload.is_focused),
     )
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")

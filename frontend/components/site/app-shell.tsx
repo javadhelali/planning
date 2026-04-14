@@ -23,17 +23,22 @@ type NavItem = {
   href: string;
   label: string;
   description: string;
-  icon: "tasks" | "okrs" | "admin";
+  icon: "dashboard" | "tasks" | "okrs" | "admin";
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/", label: "Tasks", description: "Task space", icon: "tasks" },
+  { href: "/", label: "Dashboard", description: "Overview", icon: "dashboard" },
+  { href: "/tasks", label: "Tasks", description: "Task space", icon: "tasks" },
   { href: "/okrs", label: "OKRs", description: "Goal tracking", icon: "okrs" },
   { href: "/admin", label: "Admin", description: "Workspace controls", icon: "admin" },
 ];
 
 function NavIcon({ icon, active }: { icon: NavItem["icon"]; active: boolean }) {
   const className = "h-5 w-5";
+
+  if (icon === "dashboard") {
+    return <LayoutGrid aria-hidden="true" className={className} color={active ? "var(--accent)" : "var(--foreground-muted)"} />;
+  }
 
   if (icon === "admin") {
     return <LayoutGrid aria-hidden="true" className={className} color={active ? "var(--accent)" : "var(--foreground-muted)"} />;

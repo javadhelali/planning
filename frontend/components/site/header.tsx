@@ -12,7 +12,8 @@ export default function Header({ isAuthenticated }: HeaderProps) {
   const pathname = usePathname();
   const navItems = isAuthenticated
     ? [
-        { href: "/", label: "Tasks" },
+        { href: "/", label: "Dashboard" },
+        { href: "/tasks", label: "Tasks" },
         { href: "/okrs", label: "OKRs" },
         { href: "/admin", label: "Admin" },
       ]
