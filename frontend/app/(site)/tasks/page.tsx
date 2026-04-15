@@ -1083,152 +1083,170 @@ export default function HomePage() {
                                         openEditModal(task);
                                       }
                                     }}
-                                    className="surface-subtle flex h-full min-w-0 flex-col gap-4 rounded-[28px] px-4 py-4 text-left sm:px-5 sm:py-5"
-                                    style={isBusy ? { backgroundColor: "color-mix(in srgb, var(--accent-tint) 26%, var(--background-elevated))" } : undefined}
+                                    className={`flex h-full min-w-0 flex-col text-left ${
+                                      task.is_focused
+                                        ? "focus-task-card rounded-[28px] p-5 sm:p-6"
+                                        : "surface-subtle rounded-[28px] border px-4 py-4 transition-[background-color,border-color,box-shadow] sm:px-5 sm:py-5"
+                                    }`}
+                                    style={
+                                      task.is_focused
+                                        ? { borderRadius: "28px" }
+                                        : isBusy
+                                          ? { backgroundColor: "color-mix(in srgb, var(--accent-tint) 26%, var(--background-elevated))" }
+                                          : undefined
+                                    }
                                     aria-label={`Open details for ${task.title}`}
                                   >
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div className="min-w-0 flex-1">
-                                        <h3 className="text-base font-semibold sm:text-lg">{task.title}</h3>
-                                      </div>
-
-                                      <div className={`flex items-start gap-2 ${CARD_ACTIONS_VISIBILITY_CLASS}`}>
-                                        <button
-                                          type="button"
-                                          onClick={(event) => {
-                                            event.stopPropagation();
-                                            void handleToggleDone(task);
-                                          }}
-                                          disabled={isBusy}
-                                          className="button-secondary inline-flex h-9 items-center justify-center rounded-full px-2.5 text-xs font-semibold disabled:opacity-60"
-                                          title="Mark as done"
-                                          aria-label="Mark as done"
-                                        >
-                                          {isTogglingTask ? (
-                                            <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-                                          ) : (
-                                            <Check className="h-3.5 w-3.5" aria-hidden="true" />
-                                          )}
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={(event) => {
-                                            event.stopPropagation();
-                                            void handleToggleFocus(task);
-                                          }}
-                                          disabled={isBusy}
-                                          className="button-secondary inline-flex h-9 items-center justify-center rounded-full px-2.5 text-xs font-semibold disabled:opacity-60"
-                                          title={task.is_focused ? "Remove focus" : "Set as focus"}
-                                          aria-label={task.is_focused ? "Remove focus" : "Set as focus"}
-                                        >
-                                          {isUpdatingTask ? (
-                                            <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-                                          ) : (
-                                            <Target className="h-3.5 w-3.5" aria-hidden="true" />
-                                          )}
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={(event) => {
-                                            event.stopPropagation();
-                                            void handleToggleImportant(task);
-                                          }}
-                                          disabled={isBusy}
-                                          className="inline-flex h-9 items-center justify-center rounded-full border px-2.5 text-xs font-semibold disabled:opacity-60"
-                                          style={{
-                                            borderColor: "color-mix(in srgb, var(--card-border) 72%, transparent)",
-                                            backgroundColor: task.is_important
-                                              ? "color-mix(in srgb, var(--accent-tint) 74%, transparent)"
-                                              : "color-mix(in srgb, var(--background-elevated) 88%, transparent)",
-                                            color: task.is_important ? "var(--accent)" : "var(--foreground-muted)",
-                                          }}
-                                          title={task.is_important ? "Unset important" : "Set important"}
-                                          aria-label={task.is_important ? "Unset important" : "Set important"}
-                                        >
-                                          {isMatrixTaskBusy ? (
-                                            <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-                                          ) : (
-                                            <Star className="h-3.5 w-3.5" aria-hidden="true" />
-                                          )}
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={(event) => {
-                                            event.stopPropagation();
-                                            void handleToggleUrgent(task);
-                                          }}
-                                          disabled={isBusy}
-                                          className="inline-flex h-9 items-center justify-center rounded-full border px-2.5 text-xs font-semibold disabled:opacity-60"
-                                          style={{
-                                            borderColor: "color-mix(in srgb, var(--card-border) 72%, transparent)",
-                                            backgroundColor: task.is_urgent
-                                              ? "color-mix(in srgb, var(--danger-tint) 70%, transparent)"
-                                              : "color-mix(in srgb, var(--background-elevated) 88%, transparent)",
-                                            color: task.is_urgent ? "var(--danger)" : "var(--foreground-muted)",
-                                          }}
-                                          title={task.is_urgent ? "Unset urgent" : "Set urgent"}
-                                          aria-label={task.is_urgent ? "Unset urgent" : "Set urgent"}
-                                        >
-                                          {isMatrixTaskBusy ? (
-                                            <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-                                          ) : (
-                                            <Zap className="h-3.5 w-3.5" aria-hidden="true" />
-                                          )}
-                                        </button>
-                                        <ActionMenu
-                                          menuKey={`task-${task.id}`}
-                                          openMenuKey={openMenuKey}
-                                          onToggle={(menuKey) => setOpenMenuKey((current) => (current === menuKey ? null : menuKey))}
-                                        >
-                                          <ActionMenuItem onClick={() => openEditModal(task)}>
-                                            <span className="inline-flex items-center gap-2">
-                                              <PencilLine className="h-4 w-4" aria-hidden="true" />
-                                              Edit task
+                                    <div className={`${task.is_focused ? "focus-task-content" : ""} flex flex-col gap-4`}>
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0 flex-1">
+                                          {task.is_focused ? (
+                                            <span className="focus-task-badge inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em]">
+                                              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                                              Primary focus
                                             </span>
-                                          </ActionMenuItem>
-                                          <ActionMenuItem
-                                            tone="danger"
-                                            onClick={() => {
-                                              setOpenMenuKey(null);
-                                              setPendingConfirmation({ kind: "delete", task });
+                                          ) : null}
+                                          <h3 className={`text-base font-semibold sm:text-lg ${task.is_focused ? "mt-3" : ""}`}>{task.title}</h3>
+                                        </div>
+
+                                        <div className={`flex items-start gap-2 ${CARD_ACTIONS_VISIBILITY_CLASS}`}>
+                                          <button
+                                            type="button"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              void handleToggleDone(task);
                                             }}
+                                            disabled={isBusy}
+                                            className="button-secondary inline-flex h-9 items-center justify-center rounded-full px-2.5 text-xs font-semibold disabled:opacity-60"
+                                            title="Mark as done"
+                                            aria-label="Mark as done"
                                           >
-                                            <span className="inline-flex items-center gap-2">
-                                              <Trash2 className="h-4 w-4" aria-hidden="true" />
-                                              Delete task
-                                            </span>
-                                          </ActionMenuItem>
-                                        </ActionMenu>
+                                            {isTogglingTask ? (
+                                              <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                                            ) : (
+                                              <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                                            )}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              void handleToggleFocus(task);
+                                            }}
+                                            disabled={isBusy}
+                                            className="button-secondary inline-flex h-9 items-center justify-center rounded-full px-2.5 text-xs font-semibold disabled:opacity-60"
+                                            title={task.is_focused ? "Remove focus" : "Set as focus"}
+                                            aria-label={task.is_focused ? "Remove focus" : "Set as focus"}
+                                          >
+                                            {isUpdatingTask ? (
+                                              <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                                            ) : (
+                                              <Target className="h-3.5 w-3.5" aria-hidden="true" />
+                                            )}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              void handleToggleImportant(task);
+                                            }}
+                                            disabled={isBusy}
+                                            className="inline-flex h-9 items-center justify-center rounded-full border px-2.5 text-xs font-semibold disabled:opacity-60"
+                                            style={{
+                                              borderColor: "color-mix(in srgb, var(--card-border) 72%, transparent)",
+                                              backgroundColor: task.is_important
+                                                ? "color-mix(in srgb, var(--accent-tint) 74%, transparent)"
+                                                : "color-mix(in srgb, var(--background-elevated) 88%, transparent)",
+                                              color: task.is_important ? "var(--accent)" : "var(--foreground-muted)",
+                                            }}
+                                            title={task.is_important ? "Unset important" : "Set important"}
+                                            aria-label={task.is_important ? "Unset important" : "Set important"}
+                                          >
+                                            {isMatrixTaskBusy ? (
+                                              <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                                            ) : (
+                                              <Star className="h-3.5 w-3.5" aria-hidden="true" />
+                                            )}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              void handleToggleUrgent(task);
+                                            }}
+                                            disabled={isBusy}
+                                            className="inline-flex h-9 items-center justify-center rounded-full border px-2.5 text-xs font-semibold disabled:opacity-60"
+                                            style={{
+                                              borderColor: "color-mix(in srgb, var(--card-border) 72%, transparent)",
+                                              backgroundColor: task.is_urgent
+                                                ? "color-mix(in srgb, var(--danger-tint) 70%, transparent)"
+                                                : "color-mix(in srgb, var(--background-elevated) 88%, transparent)",
+                                              color: task.is_urgent ? "var(--danger)" : "var(--foreground-muted)",
+                                            }}
+                                            title={task.is_urgent ? "Unset urgent" : "Set urgent"}
+                                            aria-label={task.is_urgent ? "Unset urgent" : "Set urgent"}
+                                          >
+                                            {isMatrixTaskBusy ? (
+                                              <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                                            ) : (
+                                              <Zap className="h-3.5 w-3.5" aria-hidden="true" />
+                                            )}
+                                          </button>
+                                          <ActionMenu
+                                            menuKey={`task-${task.id}`}
+                                            openMenuKey={openMenuKey}
+                                            onToggle={(menuKey) => setOpenMenuKey((current) => (current === menuKey ? null : menuKey))}
+                                          >
+                                            <ActionMenuItem onClick={() => openEditModal(task)}>
+                                              <span className="inline-flex items-center gap-2">
+                                                <PencilLine className="h-4 w-4" aria-hidden="true" />
+                                                Edit task
+                                              </span>
+                                            </ActionMenuItem>
+                                            <ActionMenuItem
+                                              tone="danger"
+                                              onClick={() => {
+                                                setOpenMenuKey(null);
+                                                setPendingConfirmation({ kind: "delete", task });
+                                              }}
+                                            >
+                                              <span className="inline-flex items-center gap-2">
+                                                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                                                Delete task
+                                              </span>
+                                            </ActionMenuItem>
+                                          </ActionMenu>
+                                        </div>
                                       </div>
-                                    </div>
 
-                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs sm:text-sm" style={{ color: "var(--foreground-muted)" }}>
-                                      <MetaItem icon={<Circle className="h-3.5 w-3.5" aria-hidden="true" />}>
-                                        {formatTaskStatus(task.status)}
-                                      </MetaItem>
-                                      {dueLabel ? (
-                                        <MetaItem icon={<CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />}>
-                                          {dueLabel}
+                                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs sm:text-sm" style={{ color: "var(--foreground-muted)" }}>
+                                        <MetaItem icon={<Circle className="h-3.5 w-3.5" aria-hidden="true" />}>
+                                          {formatTaskStatus(task.status)}
                                         </MetaItem>
-                                      ) : null}
-                                      {task.is_focused ? (
-                                        <MetaItem icon={<Target className="h-3.5 w-3.5" aria-hidden="true" />}>Focused</MetaItem>
-                                      ) : null}
-                                      {isTogglingTask ? (
-                                        <MetaItem icon={<LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}>
-                                          Updating status
-                                        </MetaItem>
-                                      ) : null}
-                                      {isUpdatingTask ? (
-                                        <MetaItem icon={<LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}>
-                                          Updating focus
-                                        </MetaItem>
-                                      ) : null}
-                                      {isMatrixTaskBusy ? (
-                                        <MetaItem icon={<LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}>
-                                          Updating matrix
-                                        </MetaItem>
-                                      ) : null}
+                                        {dueLabel ? (
+                                          <MetaItem icon={<CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />}>
+                                            {dueLabel}
+                                          </MetaItem>
+                                        ) : null}
+                                        {task.is_focused ? (
+                                          <MetaItem icon={<Target className="h-3.5 w-3.5" aria-hidden="true" />}>Focused</MetaItem>
+                                        ) : null}
+                                        {isTogglingTask ? (
+                                          <MetaItem icon={<LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}>
+                                            Updating status
+                                          </MetaItem>
+                                        ) : null}
+                                        {isUpdatingTask ? (
+                                          <MetaItem icon={<LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}>
+                                            Updating focus
+                                          </MetaItem>
+                                        ) : null}
+                                        {isMatrixTaskBusy ? (
+                                          <MetaItem icon={<LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}>
+                                            Updating matrix
+                                          </MetaItem>
+                                        ) : null}
+                                      </div>
                                     </div>
                                   </div>
                                 </li>
