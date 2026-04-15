@@ -13,8 +13,10 @@ import {
   LoaderCircle,
   PencilLine,
   Sparkles,
+  Star,
   Target,
   Trash2,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -72,12 +74,48 @@ const FILTER_OPTIONS: Array<{ value: StatusFilter; label: string; icon: LucideIc
 const MATRIX_QUADRANTS: Array<{
   key: MatrixQuadrantKey;
   title: string;
-  description: string;
+  importanceLabel: string;
+  urgencyLabel: string;
+  isImportantPositive: boolean;
+  isUrgentPositive: boolean;
+  guidance: string;
 }> = [
-  { key: "do_now", title: "Do now", description: "Important + Urgent" },
-  { key: "schedule", title: "Schedule", description: "Important + Not urgent" },
-  { key: "delegate", title: "Delegate", description: "Not important + Urgent" },
-  { key: "eliminate", title: "Eliminate", description: "Not important + Not urgent" },
+  {
+    key: "do_now",
+    title: "Do now",
+    importanceLabel: "Important",
+    urgencyLabel: "Urgent",
+    isImportantPositive: true,
+    isUrgentPositive: true,
+    guidance: "Handle these first and keep the list short.",
+  },
+  {
+    key: "schedule",
+    title: "Schedule",
+    importanceLabel: "Important",
+    urgencyLabel: "Not urgent",
+    isImportantPositive: true,
+    isUrgentPositive: false,
+    guidance: "Block dedicated time before they become urgent.",
+  },
+  {
+    key: "delegate",
+    title: "Delegate",
+    importanceLabel: "Not important",
+    urgencyLabel: "Urgent",
+    isImportantPositive: false,
+    isUrgentPositive: true,
+    guidance: "Assign, automate, or reduce your direct time on these.",
+  },
+  {
+    key: "eliminate",
+    title: "Eliminate",
+    importanceLabel: "Not important",
+    urgencyLabel: "Not urgent",
+    isImportantPositive: false,
+    isUrgentPositive: false,
+    guidance: "Drop, defer, or batch these to avoid distraction.",
+  },
 ];
 
 const SESSION_COOKIE_KEY = "planning_session";
@@ -227,6 +265,43 @@ function MetaItem({
       <span style={{ color: "var(--foreground-muted)" }}>{icon}</span>
       <span>{children}</span>
     </span>
+  );
+}
+
+function MatrixStateChips({
+  isImportant,
+  isUrgent,
+}: {
+  isImportant: boolean;
+  isUrgent: boolean;
+}) {
+  return (
+    <>
+      <span
+        className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+        style={{
+          backgroundColor: isImportant
+            ? "color-mix(in srgb, var(--accent-tint) 74%, transparent)"
+            : "color-mix(in srgb, var(--background-elevated) 86%, transparent)",
+          color: isImportant ? "var(--accent)" : "var(--foreground-muted)",
+        }}
+      >
+        <Star className="h-3 w-3" aria-hidden="true" />
+        {isImportant ? "Important" : "Not important"}
+      </span>
+      <span
+        className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+        style={{
+          backgroundColor: isUrgent
+            ? "color-mix(in srgb, var(--danger-tint) 72%, transparent)"
+            : "color-mix(in srgb, var(--background-elevated) 86%, transparent)",
+          color: isUrgent ? "var(--danger)" : "var(--foreground-muted)",
+        }}
+      >
+        <Zap className="h-3 w-3" aria-hidden="true" />
+        {isUrgent ? "Urgent" : "Not urgent"}
+      </span>
+    </>
   );
 }
 
@@ -936,9 +1011,35 @@ export default function HomePage() {
                     <article key={quadrant.key} className="surface-card rounded-[28px] px-4 py-4 sm:px-5 sm:py-5">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <h3 className="text-lg font-semibold">{quadrant.title}</h3>
+                          <h3 className="flex flex-wrap items-center gap-2 text-lg font-semibold">
+                            <span>{quadrant.title}</span>
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+                              style={{
+                                backgroundColor: quadrant.isImportantPositive
+                                  ? "color-mix(in srgb, var(--accent-tint) 74%, transparent)"
+                                  : "color-mix(in srgb, var(--background-elevated) 86%, transparent)",
+                                color: quadrant.isImportantPositive ? "var(--accent)" : "var(--foreground-muted)",
+                              }}
+                            >
+                              <Star className="h-3 w-3" aria-hidden="true" />
+                              <span>{quadrant.importanceLabel}</span>
+                            </span>
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+                              style={{
+                                backgroundColor: quadrant.isUrgentPositive
+                                  ? "color-mix(in srgb, var(--danger-tint) 72%, transparent)"
+                                  : "color-mix(in srgb, var(--background-elevated) 86%, transparent)",
+                                color: quadrant.isUrgentPositive ? "var(--danger)" : "var(--foreground-muted)",
+                              }}
+                            >
+                              <Zap className="h-3 w-3" aria-hidden="true" />
+                              <span>{quadrant.urgencyLabel}</span>
+                            </span>
+                          </h3>
                           <p className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
-                            {quadrant.description}
+                            {quadrant.guidance}
                           </p>
                         </div>
                         <span className="status-badge rounded-full px-2.5 py-1 text-xs font-semibold">{quadrantTasks.length}</span>
@@ -1029,7 +1130,7 @@ export default function HomePage() {
                                         {isMatrixTaskBusy ? (
                                           <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
                                         ) : (
-                                          "I"
+                                          <Star className="h-3.5 w-3.5" aria-hidden="true" />
                                         )}
                                       </button>
                                       <button
@@ -1053,7 +1154,7 @@ export default function HomePage() {
                                         {isMatrixTaskBusy ? (
                                           <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
                                         ) : (
-                                          "U"
+                                          <Zap className="h-3.5 w-3.5" aria-hidden="true" />
                                         )}
                                       </button>
                                       <ActionMenu
@@ -1159,6 +1260,10 @@ export default function HomePage() {
                           <MetaItem icon={visibleFocusedTask.status === "done" ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : <Circle className="h-3.5 w-3.5" aria-hidden="true" />}>
                             {formatTaskStatus(visibleFocusedTask.status)}
                           </MetaItem>
+                          <MatrixStateChips
+                            isImportant={visibleFocusedTask.is_important}
+                            isUrgent={visibleFocusedTask.is_urgent}
+                          />
                           {visibleFocusedTask.due_date ? (
                             <MetaItem icon={<CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />}>
                               {formatDueDate(visibleFocusedTask.due_date)}
@@ -1347,6 +1452,7 @@ export default function HomePage() {
                               <MetaItem icon={<Circle className="h-3.5 w-3.5" aria-hidden="true" />}>
                                 {formatTaskStatus(task.status)}
                               </MetaItem>
+                              <MatrixStateChips isImportant={task.is_important} isUrgent={task.is_urgent} />
                               {dueLabel ? (
                                 <MetaItem icon={<CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />}>
                                   {dueLabel}
@@ -1466,6 +1572,7 @@ export default function HomePage() {
 
                             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs sm:text-sm" style={{ color: "var(--foreground-muted)" }}>
                               <MetaItem icon={<CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />}>Done</MetaItem>
+                              <MatrixStateChips isImportant={task.is_important} isUrgent={task.is_urgent} />
                               {dueLabel ? (
                                 <MetaItem icon={<CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />}>
                                   {dueLabel}
