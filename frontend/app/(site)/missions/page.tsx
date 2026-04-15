@@ -56,6 +56,10 @@ type ToastMessage = {
 };
 
 const SESSION_COOKIE_KEY = "planning_session";
+const MISSION_CARD_ACTIONS_VISIBILITY_CLASS =
+  "md:invisible md:opacity-0 md:pointer-events-none md:transition-opacity md:group-hover/mission:visible md:group-hover/mission:opacity-100 md:group-hover/mission:pointer-events-auto";
+const STEP_CARD_ACTIONS_VISIBILITY_CLASS =
+  "md:invisible md:opacity-0 md:pointer-events-none md:transition-opacity md:group-hover/step:visible md:group-hover/step:opacity-100 md:group-hover/step:pointer-events-auto";
 
 async function readErrorMessage(response: Response) {
   const payload = await response.json().catch(() => ({}));
@@ -799,7 +803,7 @@ export default function MissionsPage() {
               const orderedSteps = sortSteps(mission.steps);
 
               return (
-                <li key={mission.id} className="group min-w-0">
+                <li key={mission.id} className="group/mission min-w-0">
                   <div className="surface-subtle rounded-[28px] px-4 py-4 sm:px-5 sm:py-5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
@@ -814,7 +818,7 @@ export default function MissionsPage() {
                         ) : null}
                       </div>
 
-                      <div className="flex items-start gap-1">
+                      <div className={`flex items-start gap-1 ${MISSION_CARD_ACTIONS_VISIBILITY_CLASS}`}>
                         <button
                           type="button"
                           onClick={() => void handleMoveMission(mission, "up")}
@@ -880,7 +884,7 @@ export default function MissionsPage() {
                         <button
                           type="button"
                           onClick={() => openCreateStepModal(mission)}
-                          className="button-ghost inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold"
+                          className={`button-ghost inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold ${MISSION_CARD_ACTIONS_VISIBILITY_CLASS}`}
                         >
                           <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                           Create step
@@ -899,7 +903,7 @@ export default function MissionsPage() {
                             return (
                               <li key={step.id}>
                                 <div
-                                  className="rounded-2xl border px-3 py-3"
+                                  className="group/step rounded-2xl border px-3 py-3"
                                   style={{
                                     borderColor: step.is_next
                                       ? "color-mix(in srgb, var(--accent) 38%, var(--card-border))"
@@ -924,7 +928,7 @@ export default function MissionsPage() {
                                         </p>
                                       ) : null}
                                     </div>
-                                    <div className="flex items-center gap-1">
+                                    <div className={`flex items-center gap-1 ${STEP_CARD_ACTIONS_VISIBILITY_CLASS}`}>
                                       <button
                                         type="button"
                                         onClick={() => void handleToggleNextStep(mission, step)}

@@ -82,6 +82,10 @@ type PendingConfirmation =
 const SESSION_COOKIE_KEY = "planning_session";
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const EMPTY_JALALI_DATE: JalaliDateParts = { year: "", month: "", day: "" };
+const OBJECTIVE_CARD_ACTIONS_VISIBILITY_CLASS =
+  "md:invisible md:opacity-0 md:pointer-events-none md:transition-opacity md:group-hover/objective:visible md:group-hover/objective:opacity-100 md:group-hover/objective:pointer-events-auto";
+const KEY_RESULT_CARD_ACTIONS_VISIBILITY_CLASS =
+  "md:invisible md:opacity-0 md:pointer-events-none md:transition-opacity md:group-hover/key-result:visible md:group-hover/key-result:opacity-100 md:group-hover/key-result:pointer-events-auto";
 
 async function readErrorMessage(response: Response) {
   const payload = await response.json().catch(() => ({}));
@@ -1367,7 +1371,7 @@ export default function OkrsPage() {
               return (
                 <article
                   key={okr.id}
-                  className={`surface-card group relative rounded-[32px] p-5 sm:p-6 ${hasOpenMenu ? "z-30" : "z-0"}`}
+                  className={`surface-card group/objective relative rounded-[32px] p-5 sm:p-6 ${hasOpenMenu ? "z-30" : "z-0"}`}
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
@@ -1393,53 +1397,55 @@ export default function OkrsPage() {
                         </MetaItem>
                       </div>
                     </div>
-                    <ActionMenu
-                      menuKey={objectiveMenuKey}
-                      openMenuKey={openMenuKey}
-                      onToggle={(menuKey) => setOpenMenuKey((current) => (current === menuKey ? null : menuKey))}
-                    >
-                      <ActionMenuItem
-                        onClick={() => {
-                          setOpenMenuKey(null);
-                          openKeyResultModal(okr);
-                        }}
+                    <div className={OBJECTIVE_CARD_ACTIONS_VISIBILITY_CLASS}>
+                      <ActionMenu
+                        menuKey={objectiveMenuKey}
+                        openMenuKey={openMenuKey}
+                        onToggle={(menuKey) => setOpenMenuKey((current) => (current === menuKey ? null : menuKey))}
                       >
-                        <span>Add key result</span>
-                        <Plus className="h-4 w-4" aria-hidden="true" />
-                      </ActionMenuItem>
-                      <ActionMenuItem
-                        onClick={() => {
-                          setOpenMenuKey(null);
-                          openEditObjectiveModal(okr);
-                        }}
-                      >
-                        <span>Edit objective</span>
-                        <PencilLine className="h-4 w-4" aria-hidden="true" />
-                      </ActionMenuItem>
-                      <ActionMenuItem
-                        disabled={busyActionKey === archiveBusyKey}
-                        onClick={() => void handleArchiveToggle(okr)}
-                      >
-                        <span>{okr.is_archived ? "Restore objective" : "Archive objective"}</span>
-                        {busyActionKey === archiveBusyKey ? (
-                          <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
-                        ) : okr.is_archived ? (
-                          <RotateCcw className="h-4 w-4" aria-hidden="true" />
-                        ) : (
-                          <Archive className="h-4 w-4" aria-hidden="true" />
-                        )}
-                      </ActionMenuItem>
-                      <ActionMenuItem
-                        tone="danger"
-                        onClick={() => {
-                          setOpenMenuKey(null);
-                          setPendingConfirmation({ kind: "objective", objective: okr });
-                        }}
-                      >
-                        <span>Delete objective</span>
-                        <Trash2 className="h-4 w-4" aria-hidden="true" />
-                      </ActionMenuItem>
-                    </ActionMenu>
+                        <ActionMenuItem
+                          onClick={() => {
+                            setOpenMenuKey(null);
+                            openKeyResultModal(okr);
+                          }}
+                        >
+                          <span>Add key result</span>
+                          <Plus className="h-4 w-4" aria-hidden="true" />
+                        </ActionMenuItem>
+                        <ActionMenuItem
+                          onClick={() => {
+                            setOpenMenuKey(null);
+                            openEditObjectiveModal(okr);
+                          }}
+                        >
+                          <span>Edit objective</span>
+                          <PencilLine className="h-4 w-4" aria-hidden="true" />
+                        </ActionMenuItem>
+                        <ActionMenuItem
+                          disabled={busyActionKey === archiveBusyKey}
+                          onClick={() => void handleArchiveToggle(okr)}
+                        >
+                          <span>{okr.is_archived ? "Restore objective" : "Archive objective"}</span>
+                          {busyActionKey === archiveBusyKey ? (
+                            <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+                          ) : okr.is_archived ? (
+                            <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                          ) : (
+                            <Archive className="h-4 w-4" aria-hidden="true" />
+                          )}
+                        </ActionMenuItem>
+                        <ActionMenuItem
+                          tone="danger"
+                          onClick={() => {
+                            setOpenMenuKey(null);
+                            setPendingConfirmation({ kind: "objective", objective: okr });
+                          }}
+                        >
+                          <span>Delete objective</span>
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        </ActionMenuItem>
+                      </ActionMenu>
+                    </div>
                   </div>
 
                   <div className="mt-6 space-y-3">
@@ -1467,7 +1473,7 @@ export default function OkrsPage() {
                         const keyResultMenuKey = `key-result-${keyResult.id}`;
 
                         return (
-                          <article key={keyResult.id} className="surface-subtle group rounded-[28px] px-4 py-4">
+                          <article key={keyResult.id} className="surface-subtle group/key-result rounded-[28px] px-4 py-4">
                             <div className="flex items-start justify-between gap-4">
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2 pr-2">
@@ -1502,7 +1508,36 @@ export default function OkrsPage() {
                                   ) : null}
                                 </div>
                               </div>
-                              <div className="shrink-0">
+                              <div className={`shrink-0 ${KEY_RESULT_CARD_ACTIONS_VISIBILITY_CLASS}`}>
+                                <div className="flex items-start gap-1">
+                                  <button
+                                    type="button"
+                                    aria-label="Decrease current value"
+                                    title="Decrease current value"
+                                    disabled={busyActionKey === adjustDownKey}
+                                    onClick={() => void handleAdjustKeyResult(keyResult, "decrease")}
+                                    className="button-secondary inline-flex h-9 w-9 items-center justify-center rounded-full disabled:opacity-60"
+                                  >
+                                    {busyActionKey === adjustDownKey ? (
+                                      <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                                    ) : (
+                                      <Minus className="h-4 w-4" aria-hidden="true" />
+                                    )}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    aria-label="Increase current value"
+                                    title="Increase current value"
+                                    disabled={busyActionKey === adjustUpKey}
+                                    onClick={() => void handleAdjustKeyResult(keyResult, "increase")}
+                                    className="button-secondary inline-flex h-9 w-9 items-center justify-center rounded-full disabled:opacity-60"
+                                  >
+                                    {busyActionKey === adjustUpKey ? (
+                                      <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                                    ) : (
+                                      <Plus className="h-4 w-4" aria-hidden="true" />
+                                    )}
+                                  </button>
                                 <ActionMenu
                                   menuKey={keyResultMenuKey}
                                   openMenuKey={openMenuKey}
@@ -1541,6 +1576,7 @@ export default function OkrsPage() {
                                     <Trash2 className="h-4 w-4" aria-hidden="true" />
                                   </ActionMenuItem>
                                 </ActionMenu>
+                                </div>
                               </div>
                             </div>
 

@@ -67,6 +67,8 @@ const FILTER_OPTIONS: Array<{ value: StatusFilter; label: string; icon: LucideIc
 
 const SESSION_COOKIE_KEY = "planning_session";
 const EMPTY_JALALI_DATE: JalaliDateParts = { year: "", month: "", day: "" };
+const CARD_ACTIONS_VISIBILITY_CLASS =
+  "md:invisible md:opacity-0 md:pointer-events-none md:transition-opacity md:group-hover:visible md:group-hover:opacity-100 md:group-hover:pointer-events-auto";
 
 async function readErrorMessage(response: Response) {
   const payload = await response.json().catch(() => ({}));
@@ -806,7 +808,7 @@ export default function HomePage() {
           ) : (
             <div className="space-y-4">
               {visibleFocusedTask ? (
-                <article className="focus-task-card p-6 sm:p-7" aria-live="polite">
+                <article className="focus-task-card group p-6 sm:p-7" aria-live="polite">
                   <div className="focus-task-content flex flex-col gap-4">
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0 flex-1">
@@ -842,7 +844,7 @@ export default function HomePage() {
                         </div>
                       </div>
 
-                      <div className="flex items-start gap-2">
+                      <div className={`flex items-start gap-2 ${CARD_ACTIONS_VISIBILITY_CLASS}`}>
                         <button
                           type="button"
                           onClick={(event) => {
@@ -955,7 +957,7 @@ export default function HomePage() {
                                 <h3 className="text-base font-semibold sm:text-lg">{task.title}</h3>
                               </div>
 
-                              <div className="flex items-start gap-2">
+                              <div className={`flex items-start gap-2 ${CARD_ACTIONS_VISIBILITY_CLASS}`}>
                                 <button
                                   type="button"
                                   onClick={(event) => {
@@ -1093,7 +1095,7 @@ export default function HomePage() {
                                 <h3 className="text-base font-semibold line-through opacity-70 sm:text-lg">{task.title}</h3>
                               </div>
 
-                              <div className="flex items-start gap-2">
+                              <div className={`flex items-start gap-2 ${CARD_ACTIONS_VISIBILITY_CLASS}`}>
                                 <button
                                   type="button"
                                   onClick={(event) => {

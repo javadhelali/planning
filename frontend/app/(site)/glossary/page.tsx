@@ -108,6 +108,8 @@ type ToastMessage = {
 };
 
 const SESSION_COOKIE_KEY = "planning_session";
+const CARD_ACTIONS_VISIBILITY_CLASS =
+  "md:invisible md:opacity-0 md:pointer-events-none md:transition-opacity md:group-hover/term:visible md:group-hover/term:opacity-100 md:group-hover/term:pointer-events-auto";
 
 const LABEL_COLORS = [
   "#ef4444",
@@ -936,11 +938,23 @@ export default function GlossaryPage() {
         ) : (
           <ul className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
             {filteredTerms.map((term) => (
-              <li key={term.id}>
-                <button
-                  type="button"
-                  onClick={() => setTermViewer(term)}
-                  className="surface-subtle group flex h-28 w-full flex-col justify-between rounded-[22px] px-4 py-3 text-left transition"
+              <li key={term.id} className="min-w-0">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    setOpenMenuKey(null);
+                    setTermViewer(term);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setOpenMenuKey(null);
+                      setTermViewer(term);
+                    }
+                  }}
+                  className="surface-subtle group/term flex h-28 w-full flex-col justify-between rounded-[22px] px-4 py-3 text-left transition"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex min-w-0 items-center gap-1">
@@ -961,18 +975,46 @@ export default function GlossaryPage() {
                         </>
                       )}
                     </div>
-                    <span
-                      className="h-2.5 w-2.5 rounded-full"
-                      style={{
-                        backgroundColor:
-                          term.labels.length > 0
-                            ? term.labels[0].color
-                            : "color-mix(in srgb, var(--card-border) 72%, transparent)",
-                      }}
-                    />
+                    <div className="flex items-center gap-1">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{
+                          backgroundColor:
+                            term.labels.length > 0
+                              ? term.labels[0].color
+                              : "color-mix(in srgb, var(--card-border) 72%, transparent)",
+                        }}
+                      />
+                      <div className={CARD_ACTIONS_VISIBILITY_CLASS}>
+                        <ActionMenu
+                          menuKey={`term-${term.id}`}
+                          openMenuKey={openMenuKey}
+                          onToggle={(menuKey) => setOpenMenuKey((current) => (current === menuKey ? null : menuKey))}
+                        >
+                          <ActionMenuItem onClick={() => openEditTermModal(term)}>
+                            <span className="inline-flex items-center gap-2">
+                              <PencilLine className="h-4 w-4" aria-hidden="true" />
+                              Edit term
+                            </span>
+                          </ActionMenuItem>
+                          <ActionMenuItem
+                            tone="danger"
+                            onClick={() => {
+                              setOpenMenuKey(null);
+                              setPendingConfirmation({ kind: "term", term });
+                            }}
+                          >
+                            <span className="inline-flex items-center gap-2">
+                              <Trash2 className="h-4 w-4" aria-hidden="true" />
+                              Delete term
+                            </span>
+                          </ActionMenuItem>
+                        </ActionMenu>
+                      </div>
+                    </div>
                   </div>
                   <p className="line-clamp-2 text-sm font-semibold leading-6 sm:text-base">{term.term}</p>
-                </button>
+                </div>
               </li>
             ))}
           </ul>
