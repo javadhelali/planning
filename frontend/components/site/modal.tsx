@@ -83,42 +83,44 @@ export default function Modal({ isOpen, title, description, onClose, children }:
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center">
+    <div className="fixed inset-0 z-50 overflow-y-auto p-4">
       <button
         type="button"
         aria-label="Close dialog"
         className="absolute inset-0 bg-black/45"
         onClick={onClose}
       />
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="modal-title"
-        aria-describedby={description ? "modal-description" : undefined}
-        tabIndex={-1}
-        className="surface-card relative z-10 w-full max-w-xl rounded-3xl p-5 sm:p-6"
-      >
-        <div className="mb-4 flex items-start justify-between gap-4">
-          <div>
-            <h2 id="modal-title" className="text-lg font-semibold">
-              {title}
-            </h2>
-            {description ? (
-              <p id="modal-description" className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
-                {description}
-              </p>
-            ) : null}
+      <div className="relative z-10 flex min-h-full items-start justify-center py-2 sm:items-center">
+        <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-title"
+          aria-describedby={description ? "modal-description" : undefined}
+          tabIndex={-1}
+          className="surface-card w-full max-w-3xl max-h-[calc(100vh-1.5rem)] overflow-y-auto rounded-3xl p-5 sm:p-6"
+        >
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <h2 id="modal-title" className="text-lg font-semibold">
+                {title}
+              </h2>
+              {description ? (
+                <p id="modal-description" className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
+                  {description}
+                </p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="button-secondary rounded-xl px-3 py-2 text-sm font-medium"
+            >
+              Close
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="button-secondary rounded-xl px-3 py-2 text-sm font-medium"
-          >
-            Close
-          </button>
+          {children}
         </div>
-        {children}
       </div>
     </div>
   );

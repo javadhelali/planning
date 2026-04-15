@@ -1,32 +1,32 @@
 services:
-  # planning-backend:
-  #   container_name: planning-backend
-  #   restart: always
-  #   logging:
-  #     driver: json-file
-  #     options:
-  #       max-size: "10m"
-  #       max-file: "3"
-  #   build: ./backend
-  #   environment:
-  #     - DATABASE_URL=postgresql://postgres:7NB05789o7uytOI@planning-db:5432/planning
-  #   networks:
-  #     - apps
+  planning-backend:
+    container_name: planning-backend
+    restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    build: ./backend
+    environment:
+      - DATABASE_URL=postgresql://postgres:7NB05789o7uytOI@planning-db:5432/planning
+    networks:
+      - apps
 
-  # planning-frontend:
-  #   container_name: planning-frontend
-  #   restart: always
-  #   logging:
-  #     driver: json-file
-  #     options:
-  #       max-size: "10m"
-  #       max-file: "3"
-  #   build:
-  #     context: ./frontend
-  #     args:
-  #       NEXT_PUBLIC_API_URL: https://questboard.ir
-  #   networks:
-  #     - apps
+  planning-frontend:
+    container_name: planning-frontend
+    restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: https://questboard.ir
+    networks:
+      - apps
 
   planning-db:
     container_name: planning-db

@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from typing import Optional
 
 
 class Settings(BaseSettings):
@@ -19,6 +20,8 @@ class Settings(BaseSettings):
 
     # OpenRouter
     openrouter_api_key: str = ""
+
+    global_access_http_proxy: Optional[str] = None
 
     class Config:
         env_file = ".env"

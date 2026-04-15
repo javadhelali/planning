@@ -15,6 +15,7 @@ export default function Header({ isAuthenticated }: HeaderProps) {
         { href: "/", label: "Dashboard" },
         { href: "/tasks", label: "Tasks" },
         { href: "/okrs", label: "OKRs" },
+        { href: "/glossary", label: "Glossary" },
         { href: "/admin", label: "Admin" },
       ]
     : [{ href: "/", label: "Overview" }];
