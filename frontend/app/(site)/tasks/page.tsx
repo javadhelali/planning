@@ -968,7 +968,24 @@ export default function HomePage() {
                 );
               })}
             </div>
-            {taskView === "list" ? <StatusFilterControl value={statusFilter} onChange={setStatusFilter} /> : null}
+            <div className="flex w-[136px] justify-center">
+              {taskView === "list" ? (
+                <StatusFilterControl value={statusFilter} onChange={setStatusFilter} />
+              ) : (
+                <div
+                  className="inline-flex h-12 w-full items-center justify-center gap-1.5 rounded-full border px-3 text-xs font-medium"
+                  style={{
+                    borderColor: "color-mix(in srgb, var(--card-border) 62%, transparent)",
+                    color: "var(--foreground-muted)",
+                    backgroundColor: "color-mix(in srgb, var(--background-elevated) 90%, transparent)",
+                  }}
+                  aria-label="Matrix shows active tasks only"
+                >
+                  <Circle className="h-3.5 w-3.5" aria-hidden="true" />
+                  Active only
+                </div>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => setPendingConfirmation({ kind: "clear_completed" })}
