@@ -39,7 +39,7 @@ class OpenRouterClient:
         temperature: float = 0.01,
         max_tokens: Optional[int] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
-        tool_choice: Optional[str] = None,
+        tool_choice: Optional[Any] = None,
         timeout: int = 60 * 5,
         plugins: Optional[List[Dict[str, Any]]] = None,
         reasoning: Optional[Dict[str, Any]] = None,

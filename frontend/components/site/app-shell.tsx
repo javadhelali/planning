@@ -142,7 +142,7 @@ export default function AppShell({ children }: AppShellProps) {
   const showFocusedTaskBanner = pathname !== "/tasks" && focusedTask !== null;
 
   return (
-    <div className="min-h-screen">
+    <div className="h-screen min-h-screen overflow-hidden">
       {isMobileOpen ? (
         <button
           type="button"
@@ -152,9 +152,9 @@ export default function AppShell({ children }: AppShellProps) {
         />
       ) : null}
 
-      <div className="flex min-h-screen w-full">
+      <div className="flex h-full w-full">
         <aside
-          className={`fixed inset-y-0 left-0 z-40 flex flex-col border-r bg-[var(--background)] px-2 py-4 transition-transform duration-200 lg:static lg:translate-x-0 ${
+          className={`app-scroll fixed inset-y-0 left-0 z-40 flex flex-col overflow-y-auto border-r bg-[var(--background)] px-2 py-4 transition-transform duration-200 lg:static lg:translate-x-0 ${
             isMobileOpen ? "translate-x-0" : "-translate-x-full"
           } ${isCollapsed ? "w-[84px]" : "w-[248px]"}`}
           style={{ borderColor: "color-mix(in srgb, var(--card-border) 72%, transparent)" }}
@@ -311,8 +311,8 @@ export default function AppShell({ children }: AppShellProps) {
           </div>
         </aside>
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="px-4 py-4 sm:px-6">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <header className="shrink-0 px-4 py-4 sm:px-6">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
                 <button
@@ -340,7 +340,7 @@ export default function AppShell({ children }: AppShellProps) {
             </div>
           </header>
 
-          <main className="min-w-0 flex-1 px-4 pb-6 sm:px-6">{children}</main>
+          <main className="app-scroll min-h-0 min-w-0 flex-1 overflow-y-auto px-4 pb-6 sm:px-6">{children}</main>
         </div>
       </div>
     </div>

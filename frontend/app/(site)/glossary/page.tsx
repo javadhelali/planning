@@ -57,14 +57,19 @@ type GlossarySnapshot = {
   terms: GlossaryTerm[];
 };
 
-type AiModelKey = "high" | "medium" | "cheap";
+type AiModelKey =
+  | "gemini_3_1_pro"
+  | "claude_3_5_haiku"
+  | "gemini_3_flash"
+  | "gpt_4o_mini"
+  | "llama_3_1_8b";
 
 type GlossaryAIDraft = {
   term: string;
   short_definition: string;
   simple_definition: string;
   professional_definition: string;
-  related_sources: string | null;
+  related_sources: string;
   note: string | null;
   related_terms: string[];
   suggested_label_names: string[];
@@ -123,19 +128,29 @@ const AI_MODEL_OPTIONS: Array<{
   description: string;
 }> = [
   {
-    key: "high",
-    label: "High · Claude 3.7 Sonnet",
-    description: "Best quality, slower, reasoning enabled.",
+    key: "gemini_3_1_pro",
+    label: "Gemini 3.1 Pro Preview",
+    description: "High reasoning · ~$0.00330/term",
   },
   {
-    key: "medium",
-    label: "Medium · GPT-4o mini",
-    description: "Balanced quality and speed, reasoning enabled.",
+    key: "claude_3_5_haiku",
+    label: "Claude 3.5 Haiku",
+    description: "High reasoning · ~$0.00140/term",
   },
   {
-    key: "cheap",
-    label: "Cheap · Llama 3.1 8B",
-    description: "Lowest cost and fast generation.",
+    key: "gemini_3_flash",
+    label: "Gemini 3 Flash Preview",
+    description: "Medium-high reasoning · ~$0.00083/term",
+  },
+  {
+    key: "gpt_4o_mini",
+    label: "GPT-4o mini",
+    description: "High reasoning · ~$0.00017/term",
+  },
+  {
+    key: "llama_3_1_8b",
+    label: "Llama 3.1 8B Instruct",
+    description: "Medium reasoning · ~$0.00001/term",
   },
 ];
 
@@ -420,7 +435,7 @@ export default function GlossaryPage() {
   const [isTermSubmitting, setIsTermSubmitting] = useState(false);
   const [isAiDraftModalOpen, setIsAiDraftModalOpen] = useState(false);
   const [aiTermInput, setAiTermInput] = useState("");
-  const [aiModelKey, setAiModelKey] = useState<AiModelKey>("medium");
+  const [aiModelKey, setAiModelKey] = useState<AiModelKey>("gemini_3_flash");
   const [isAiDraftSubmitting, setIsAiDraftSubmitting] = useState(false);
 
   const [isLabelManagerOpen, setIsLabelManagerOpen] = useState(false);
@@ -555,7 +570,7 @@ export default function GlossaryPage() {
     setOpenMenuKey(null);
     setIsAiDraftModalOpen(true);
     setAiTermInput("");
-    setAiModelKey("medium");
+    setAiModelKey("gemini_3_flash");
   }, []);
 
   const closeAiDraftModal = useCallback(() => {
@@ -1015,8 +1030,7 @@ export default function GlossaryPage() {
           >
             <p className="text-sm font-semibold">How It Works</p>
             <p className="mt-1 text-xs leading-6" style={{ color: "var(--foreground-muted)" }}>
-              High and medium models run with reasoning enabled for better structure. You can fully edit generated
-              content before saving the term.
+              Models are sorted by quality/cost. You can fully edit generated content before saving the term.
             </p>
           </div>
 
