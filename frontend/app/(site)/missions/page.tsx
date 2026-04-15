@@ -252,11 +252,14 @@ function GuestHome() {
             <article className="surface-subtle rounded-3xl p-4">
               <p className="font-medium">1. Launch paid pilot</p>
             </article>
-            <article className="surface-subtle rounded-3xl p-4">
-              <p className="text-sm font-semibold">Next step</p>
-              <p className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
-                Run five customer calls and summarize objections.
-              </p>
+            <article className="mission-next-step-card rounded-3xl border p-4">
+              <div className="mission-next-step-content">
+                <span className="focus-task-badge inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em]">
+                  <Sparkles className="h-3 w-3" aria-hidden="true" />
+                  Next step
+                </span>
+                <p className="mt-2 text-sm font-semibold">Run five customer calls and summarize objections.</p>
+              </div>
             </article>
           </div>
         </aside>
@@ -896,44 +899,47 @@ export default function MissionsPage() {
                           No steps yet.
                         </p>
                       ) : (
-                        <ul className="mt-2 space-y-2">
+                        <ul className="mt-3 space-y-3">
                           {orderedSteps.map((step, stepIndex) => {
                             const stepIsBusy = busyStepId === step.id;
 
                             return (
                               <li key={step.id}>
                                 <div
-                                  className="group/step rounded-2xl border px-3 py-3"
-                                  style={{
-                                    borderColor: step.is_next
-                                      ? "color-mix(in srgb, var(--accent) 38%, var(--card-border))"
-                                      : "color-mix(in srgb, var(--card-border) 72%, transparent)",
-                                    backgroundColor: step.is_next
-                                      ? "color-mix(in srgb, var(--accent-tint) 42%, var(--background-elevated))"
-                                      : "color-mix(in srgb, var(--background-elevated) 88%, transparent)",
-                                  }}
+                                  className={`group/step rounded-[28px] border px-4 py-4 sm:px-5 sm:py-5 ${step.is_next ? "mission-next-step-card" : ""}`}
+                                  style={
+                                    step.is_next
+                                      ? undefined
+                                      : {
+                                          borderColor: "color-mix(in srgb, var(--card-border) 72%, transparent)",
+                                          backgroundColor: "color-mix(in srgb, var(--background-elevated) 88%, transparent)",
+                                        }
+                                  }
                                 >
-                                  <div className="flex items-start justify-between gap-2">
-                                    <div className="min-w-0">
+                                  <div className={`${step.is_next ? "mission-next-step-content" : ""} flex items-start justify-between gap-3`}>
+                                    <div className="min-w-0 flex-1">
+                                      {step.is_next ? (
+                                        <span className="focus-task-badge mb-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em]">
+                                          <Sparkles className="h-3 w-3" aria-hidden="true" />
+                                          Next step
+                                        </span>
+                                      ) : null}
                                       <div className="flex flex-wrap items-center gap-2">
                                         <span className="status-badge rounded-full px-2 py-0.5 text-[11px] font-semibold">#{step.position}</span>
-                                        <p className={`text-sm ${step.is_next ? "font-semibold" : "font-medium"}`}>{step.title}</p>
-                                        {step.is_next ? (
-                                          <span className="status-badge rounded-full px-2 py-0.5 text-[11px] font-semibold">Next step</span>
-                                        ) : null}
+                                        <p className={`${step.is_next ? "text-base font-semibold sm:text-lg" : "text-base font-medium sm:text-lg"}`}>{step.title}</p>
                                       </div>
                                       {step.description ? (
-                                        <p className="mt-1 text-xs leading-5" style={{ color: "var(--foreground-muted)" }}>
+                                        <p className="mt-2 text-sm leading-6" style={{ color: "var(--foreground-muted)" }}>
                                           {step.description}
                                         </p>
                                       ) : null}
                                     </div>
-                                    <div className={`flex items-center gap-1 ${STEP_CARD_ACTIONS_VISIBILITY_CLASS}`}>
+                                    <div className={`flex items-start gap-2 ${STEP_CARD_ACTIONS_VISIBILITY_CLASS}`}>
                                       <button
                                         type="button"
                                         onClick={() => void handleToggleNextStep(mission, step)}
                                         disabled={stepIsBusy}
-                                        className="button-secondary inline-flex h-8 items-center justify-center rounded-full px-2 text-xs font-semibold disabled:opacity-60"
+                                        className="button-secondary inline-flex h-9 items-center justify-center rounded-full px-2.5 text-xs font-semibold disabled:opacity-60"
                                         title={step.is_next ? "Clear next step" : "Set as next step"}
                                         aria-label={step.is_next ? "Clear next step" : "Set as next step"}
                                       >
@@ -947,7 +953,7 @@ export default function MissionsPage() {
                                         type="button"
                                         onClick={() => void handleMoveStep(mission, step, "up")}
                                         disabled={stepIndex === 0 || stepIsBusy}
-                                        className="button-secondary inline-flex h-8 items-center justify-center rounded-full px-2 text-xs font-semibold disabled:opacity-50"
+                                        className="button-secondary inline-flex h-9 items-center justify-center rounded-full px-2.5 text-xs font-semibold disabled:opacity-50"
                                         title="Move step up"
                                         aria-label="Move step up"
                                       >
@@ -957,7 +963,7 @@ export default function MissionsPage() {
                                         type="button"
                                         onClick={() => void handleMoveStep(mission, step, "down")}
                                         disabled={stepIndex === orderedSteps.length - 1 || stepIsBusy}
-                                        className="button-secondary inline-flex h-8 items-center justify-center rounded-full px-2 text-xs font-semibold disabled:opacity-50"
+                                        className="button-secondary inline-flex h-9 items-center justify-center rounded-full px-2.5 text-xs font-semibold disabled:opacity-50"
                                         title="Move step down"
                                         aria-label="Move step down"
                                       >
@@ -967,7 +973,7 @@ export default function MissionsPage() {
                                         type="button"
                                         onClick={() => openStepEditor(step)}
                                         disabled={stepIsBusy}
-                                        className="button-secondary inline-flex h-8 items-center justify-center rounded-full px-2 text-xs font-semibold disabled:opacity-60"
+                                        className="button-secondary inline-flex h-9 items-center justify-center rounded-full px-2.5 text-xs font-semibold disabled:opacity-60"
                                         title="Edit step"
                                         aria-label="Edit step"
                                       >
@@ -977,7 +983,7 @@ export default function MissionsPage() {
                                         type="button"
                                         onClick={() => setPendingConfirmation({ kind: "delete_step", step })}
                                         disabled={stepIsBusy}
-                                        className="button-danger inline-flex h-8 items-center justify-center rounded-full px-2 text-xs font-semibold disabled:opacity-60"
+                                        className="button-danger inline-flex h-9 items-center justify-center rounded-full px-2.5 text-xs font-semibold disabled:opacity-60"
                                         title="Delete step"
                                         aria-label="Delete step"
                                       >
