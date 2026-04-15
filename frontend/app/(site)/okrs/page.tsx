@@ -5,6 +5,7 @@ import {
   Archive,
   CalendarRange,
   Clock3,
+  Copy,
   Ellipsis,
   Gauge,
   LoaderCircle,
@@ -122,6 +123,103 @@ function clampPercentage(value: number) {
 function formatMetricValue(value: number) {
   const rounded = Math.round(value * 10) / 10;
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+function toCompactText(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function toMultilineText(value: string) {
+  return value.replace(/\r\n/g, "\n").trim();
+}
+
+async function copyTextToClipboard(text: string) {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textArea = document.createElement("textarea");
+  textArea.value = text;
+  textArea.setAttribute("readonly", "true");
+  textArea.style.position = "fixed";
+  textArea.style.opacity = "0";
+  textArea.style.pointerEvents = "none";
+
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+  textArea.setSelectionRange(0, textArea.value.length);
+
+  const didCopy = document.execCommand("copy");
+  textArea.remove();
+
+  if (!didCopy) {
+    throw new Error("Clipboard copy is unavailable in this browser.");
+  }
+}
+
+function buildActiveOkrsMarkdown(okrs: Okr[], today: string) {
+  const lines: string[] = [
+    "# Active OKRs",
+    "",
+    `Generated on ${formatJalaliDate(today)} (${today})`,
+    "",
+  ];
+
+  if (okrs.length === 0) {
+    lines.push("_No active objectives._");
+    return lines.join("\n");
+  }
+
+  okrs.forEach((okr, index) => {
+    const progress = Math.round(objectiveProgress(okr));
+    const timeline = timelineSummary(okr, today);
+
+    lines.push(`## ${index + 1}. ${toCompactText(okr.title)}`);
+    lines.push(`- Dates: ${formatJalaliDateRange(okr.start_date, okr.end_date)} (${okr.start_date} to ${okr.end_date})`);
+    lines.push(`- Progress: ${progress}%`);
+    lines.push(`- Timeline: ${timeline.label}`);
+    lines.push(`- Time elapsed: ${timeline.secondary}`);
+    lines.push(`- Key results: ${okr.key_results.length}`);
+
+    const description = toMultilineText(okr.description ?? "");
+    if (description) {
+      lines.push("");
+      lines.push("### Notes");
+      lines.push(description);
+    }
+
+    lines.push("");
+    lines.push("### Key Results");
+
+    if (okr.key_results.length === 0) {
+      lines.push("_No key results yet._");
+      lines.push("");
+      return;
+    }
+
+    okr.key_results.forEach((keyResult) => {
+      const unitSuffix = keyResult.unit ? ` ${keyResult.unit}` : "";
+      const health = keyResultHealth(okr, keyResult, today);
+      const expectedMetricValue = keyResultExpectedValue(okr, keyResult, today);
+
+      lines.push(`- **${toCompactText(keyResult.title)}**`);
+      lines.push(`  - Progress: ${Math.round(keyResultProgressPercent(keyResult))}%`);
+      lines.push(
+        `  - Metric: ${formatMetricValue(keyResult.start_value)} -> ${formatMetricValue(keyResult.current_value)} -> ${formatMetricValue(keyResult.target_value)}${unitSuffix}`,
+      );
+      lines.push(`  - Expected now: ${formatMetricValue(expectedMetricValue)}${unitSuffix}`);
+      lines.push(`  - Step: ${formatMetricValue(keyResult.step_value)}${unitSuffix}`);
+      if (health) {
+        lines.push(`  - Health: ${healthLabel(health)}`);
+      }
+    });
+
+    lines.push("");
+  });
+
+  return lines.join("\n");
 }
 
 function formatJalaliDate(value: string) {
@@ -420,13 +518,47 @@ function ActionMenu({
   children: ReactNode;
 }) {
   const isOpen = openMenuKey === menuKey;
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [openDirection, setOpenDirection] = useState<"down" | "up">("down");
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const frameId = window.requestAnimationFrame(() => {
+      const root = rootRef.current;
+      const menu = menuRef.current;
+      if (!root || !menu) return;
+
+      const container = root.closest(".app-scroll");
+      const rootRect = root.getBoundingClientRect();
+      const menuHeight = menu.getBoundingClientRect().height;
+      const viewportTop = container instanceof HTMLElement ? container.getBoundingClientRect().top : 0;
+      const viewportBottom =
+        container instanceof HTMLElement ? container.getBoundingClientRect().bottom : window.innerHeight;
+      const spaceBelow = viewportBottom - rootRect.bottom;
+      const spaceAbove = rootRect.top - viewportTop;
+
+      if (spaceBelow < menuHeight + 8 && spaceAbove > spaceBelow) {
+        setOpenDirection("up");
+        return;
+      }
+
+      setOpenDirection("down");
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [isOpen]);
 
   return (
-    <div data-action-menu-root className="relative">
+    <div ref={rootRef} data-action-menu-root className="relative">
       <ActionMenuButton title="Open actions" isOpen={isOpen} onClick={() => onToggle(menuKey)} />
       {isOpen ? (
         <div
-          className="surface-card absolute right-0 top-11 z-20 w-52 rounded-[24px] p-2 shadow-[var(--shadow-4)]"
+          ref={menuRef}
+          className={`surface-card absolute right-0 z-20 w-52 rounded-[24px] p-2 shadow-[var(--shadow-4)] ${
+            openDirection === "up" ? "bottom-11" : "top-11"
+          }`}
           style={{ border: "1px solid color-mix(in srgb, var(--card-border) 72%, transparent)" }}
         >
           <div className="space-y-1">{children}</div>
@@ -702,6 +834,7 @@ export default function OkrsPage() {
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
   const [busyActionKey, setBusyActionKey] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [isExportingActiveOkrs, setIsExportingActiveOkrs] = useState(false);
   const toastTimeoutsRef = useRef<number[]>([]);
 
   const dismissToast = useCallback((id: number) => {
@@ -1039,6 +1172,27 @@ export default function OkrsPage() {
     }
   }
 
+  async function handleCopyActiveOkrsAsMarkdown() {
+    if (isExportingActiveOkrs) return;
+
+    setIsExportingActiveOkrs(true);
+
+    try {
+      const markdown = buildActiveOkrsMarkdown(activeOkrs, today);
+      await copyTextToClipboard(markdown);
+      pushToast(
+        "success",
+        activeOkrs.length === 0
+          ? "Active OKRs export copied. No active objectives found."
+          : "Active OKRs copied as Markdown.",
+      );
+    } catch (error) {
+      pushToast("error", error instanceof Error ? error.message : "Failed to copy active OKRs");
+    } finally {
+      setIsExportingActiveOkrs(false);
+    }
+  }
+
   if (authState === "checking") {
     return <DashboardLoadingState />;
   }
@@ -1075,10 +1229,10 @@ export default function OkrsPage() {
       </div>
 
       <section className="px-1 pb-5">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-4">
           <div className="min-w-0 flex-1">
             <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">My OKRs</h2>
-            <p className="mt-2 max-w-4xl text-sm leading-6 sm:text-base" style={{ color: "var(--foreground-muted)" }}>
+            <p className="mt-2 text-sm leading-6 sm:text-base" style={{ color: "var(--foreground-muted)" }}>
               A lightweight personal system: set a dated objective, define a few measurable outcomes, and catch drift
               early.
             </p>
@@ -1117,7 +1271,7 @@ export default function OkrsPage() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3 lg:justify-end">
             <div
               className="surface-subtle inline-flex rounded-full p-1"
               style={{ border: "1px solid color-mix(in srgb, var(--card-border) 72%, transparent)" }}
@@ -1145,6 +1299,21 @@ export default function OkrsPage() {
                 );
               })}
             </div>
+
+            <button
+              type="button"
+              onClick={() => void handleCopyActiveOkrsAsMarkdown()}
+              disabled={isExportingActiveOkrs}
+              aria-label={isExportingActiveOkrs ? "Copying active OKRs as Markdown" : "Copy active OKRs as Markdown"}
+              title={isExportingActiveOkrs ? "Copying active OKRs as Markdown..." : "Copy active OKRs as Markdown"}
+              className="button-secondary inline-flex h-11 w-11 items-center justify-center rounded-full"
+            >
+              {isExportingActiveOkrs ? (
+                <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <Copy className="h-4 w-4" aria-hidden="true" />
+              )}
+            </button>
 
             <button
               type="button"
@@ -1191,9 +1360,15 @@ export default function OkrsPage() {
               const timeline = timelineSummary(okr, today);
               const archiveBusyKey = `${okr.is_archived ? "restore" : "archive"}-${okr.id}`;
               const objectiveMenuKey = `objective-${okr.id}`;
+              const hasOpenMenu =
+                openMenuKey === objectiveMenuKey ||
+                okr.key_results.some((keyResult) => openMenuKey === `key-result-${keyResult.id}`);
 
               return (
-                <article key={okr.id} className="surface-card group rounded-[32px] p-5 sm:p-6">
+                <article
+                  key={okr.id}
+                  className={`surface-card group relative rounded-[32px] p-5 sm:p-6 ${hasOpenMenu ? "z-30" : "z-0"}`}
+                >
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
                       <h3 className="pr-2 text-2xl font-semibold tracking-tight">{okr.title}</h3>
