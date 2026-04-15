@@ -1,6 +1,6 @@
 "use client";
 
-import { ListTodo, LoaderCircle, Target, TrendingUp } from "lucide-react";
+import { BriefcaseBusiness, ListTodo, LoaderCircle, Target, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -26,6 +26,16 @@ type Okr = {
   end_date: string;
   is_archived: boolean;
   key_results: KeyResult[];
+};
+
+type MissionStep = {
+  id: number;
+  is_next: boolean;
+};
+
+type Mission = {
+  id: number;
+  steps: MissionStep[];
 };
 
 type Health = "ahead" | "on_track" | "off_track" | "critical";
@@ -134,6 +144,7 @@ export default function HomePage() {
   const [authState, setAuthState] = useState<AuthState>("checking");
   const [tasks, setTasks] = useState<Task[]>([]);
   const [okrs, setOkrs] = useState<Okr[]>([]);
+  const [missions, setMissions] = useState<Mission[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -142,15 +153,22 @@ export default function HomePage() {
     setLoadError(null);
 
     try {
-      const [tasksResponse, okrsResponse] = await Promise.all([get("/planning/tasks"), get("/planning/okrs")]);
+      const [tasksResponse, okrsResponse, missionsResponse] = await Promise.all([
+        get("/planning/tasks"),
+        get("/planning/okrs"),
+        get("/planning/missions"),
+      ]);
 
       if (!tasksResponse.ok) throw new Error(await readErrorMessage(tasksResponse));
       if (!okrsResponse.ok) throw new Error(await readErrorMessage(okrsResponse));
+      if (!missionsResponse.ok) throw new Error(await readErrorMessage(missionsResponse));
 
       const tasksData = (await tasksResponse.json()) as Task[];
       const okrsData = (await okrsResponse.json()) as Okr[];
+      const missionsData = (await missionsResponse.json()) as Mission[];
       setTasks(tasksData);
       setOkrs(okrsData);
+      setMissions(missionsData);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "Failed to load dashboard");
     } finally {
@@ -171,6 +189,14 @@ export default function HomePage() {
   const totalTasks = tasks.length;
   const doneTasks = useMemo(() => tasks.filter((task) => task.status === "done").length, [tasks]);
   const todoTasks = totalTasks - doneTasks;
+  const totalMissionSteps = useMemo(
+    () => missions.reduce((sum, mission) => sum + mission.steps.length, 0),
+    [missions],
+  );
+  const nextStepsCount = useMemo(
+    () => missions.reduce((sum, mission) => sum + (mission.steps.some((step) => step.is_next) ? 1 : 0), 0),
+    [missions],
+  );
 
   const activeOkrs = useMemo(() => okrs.filter((okr) => !okr.is_archived), [okrs]);
   const archivedOkrs = useMemo(() => okrs.filter((okr) => okr.is_archived), [okrs]);
@@ -229,7 +255,7 @@ export default function HomePage() {
       <section className="px-1">
         <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">Dashboard</h2>
         <p className="mt-1 text-sm leading-6 sm:text-base" style={{ color: "var(--foreground-muted)" }}>
-          Quick summary of your tasks and OKR performance.
+          Quick summary of your tasks, missions, and OKR performance.
         </p>
       </section>
 
@@ -244,7 +270,7 @@ export default function HomePage() {
         </section>
       ) : null}
 
-      <section className="grid gap-3 lg:grid-cols-2">
+      <section className="grid gap-3 lg:grid-cols-3">
         <article className="surface-card rounded-[28px] px-5 py-5 sm:px-6">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold">Tasks</p>
@@ -256,6 +282,23 @@ export default function HomePage() {
           </p>
           <Link href="/tasks" className="button-secondary mt-5 inline-flex rounded-full px-4 py-2 text-sm font-medium">
             Open tasks
+          </Link>
+        </article>
+
+        <article className="surface-card rounded-[28px] px-5 py-5 sm:px-6">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold">Missions</p>
+            <BriefcaseBusiness className="h-5 w-5" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" />
+          </div>
+          <p className="mt-4 text-3xl font-semibold">{missions.length}</p>
+          <p className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
+            {nextStepsCount} with a next step
+          </p>
+          <p className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
+            {totalMissionSteps} total steps
+          </p>
+          <Link href="/missions" className="button-secondary mt-5 inline-flex rounded-full px-4 py-2 text-sm font-medium">
+            Open missions
           </Link>
         </article>
 

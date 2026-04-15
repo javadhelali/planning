@@ -3,6 +3,7 @@
 import { toJalaali } from "jalaali-js";
 import {
   BookOpenText,
+  BriefcaseBusiness,
   CalendarDays,
   LayoutGrid,
   ListTodo,
@@ -27,7 +28,7 @@ type NavItem = {
   href: string;
   label: string;
   description: string;
-  icon: "dashboard" | "tasks" | "okrs" | "glossary" | "admin";
+  icon: "dashboard" | "tasks" | "missions" | "okrs" | "glossary" | "admin";
 };
 
 type FocusedTask = {
@@ -41,6 +42,7 @@ type FocusedTask = {
 const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Dashboard", description: "Overview", icon: "dashboard" },
   { href: "/tasks", label: "Tasks", description: "Task space", icon: "tasks" },
+  { href: "/missions", label: "Missions", description: "Mission map", icon: "missions" },
   { href: "/okrs", label: "OKRs", description: "Goal tracking", icon: "okrs" },
   { href: "/glossary", label: "Glossary", description: "Term mastery", icon: "glossary" },
   { href: "/admin", label: "Admin", description: "Workspace controls", icon: "admin" },
@@ -59,6 +61,12 @@ function NavIcon({ icon, active }: { icon: NavItem["icon"]; active: boolean }) {
 
   if (icon === "okrs") {
     return <Target aria-hidden="true" className={className} color={active ? "var(--accent)" : "var(--foreground-muted)"} />;
+  }
+
+  if (icon === "missions") {
+    return (
+      <BriefcaseBusiness aria-hidden="true" className={className} color={active ? "var(--accent)" : "var(--foreground-muted)"} />
+    );
   }
 
   if (icon === "glossary") {
