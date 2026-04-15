@@ -27,7 +27,9 @@ import Modal from "@/components/site/modal";
 type AuthState = "checking" | "authenticated" | "guest";
 type TaskStatus = "todo" | "done";
 type StatusFilter = "all" | "active" | "done";
-type BusyTaskAction = "toggle" | "delete" | "update";
+type TaskView = "list" | "matrix";
+type BusyTaskAction = "toggle" | "delete" | "update" | "matrix";
+type MatrixQuadrantKey = "do_now" | "schedule" | "delegate" | "eliminate";
 
 type Task = {
   id: number;
@@ -38,6 +40,8 @@ type Task = {
   due_date: string | null;
   completed_at: string | null;
   is_focused: boolean;
+  is_important: boolean;
+  is_urgent: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -63,6 +67,17 @@ const FILTER_OPTIONS: Array<{ value: StatusFilter; label: string; icon: LucideIc
   { value: "all", label: "All tasks", icon: ListFilter },
   { value: "active", label: "Undone tasks", icon: Circle },
   { value: "done", label: "Done tasks", icon: CheckCircle2 },
+];
+
+const MATRIX_QUADRANTS: Array<{
+  key: MatrixQuadrantKey;
+  title: string;
+  description: string;
+}> = [
+  { key: "do_now", title: "Do now", description: "Important + Urgent" },
+  { key: "schedule", title: "Schedule", description: "Important + Not urgent" },
+  { key: "delegate", title: "Delegate", description: "Not important + Urgent" },
+  { key: "eliminate", title: "Eliminate", description: "Not important + Not urgent" },
 ];
 
 const SESSION_COOKIE_KEY = "planning_session";
@@ -143,6 +158,13 @@ function filterTasks(tasks: Task[], filter: StatusFilter) {
   }
 
   return tasks;
+}
+
+function taskQuadrant(task: Task): MatrixQuadrantKey {
+  if (task.is_important && task.is_urgent) return "do_now";
+  if (task.is_important && !task.is_urgent) return "schedule";
+  if (!task.is_important && task.is_urgent) return "delegate";
+  return "eliminate";
 }
 
 function StatusFilterControl({
@@ -404,6 +426,7 @@ function DashboardLoadingState() {
 export default function HomePage() {
   const [authState, setAuthState] = useState<AuthState>("checking");
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [taskView, setTaskView] = useState<TaskView>("list");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [title, setTitle] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -419,6 +442,8 @@ export default function HomePage() {
   const [editDueDate, setEditDueDate] = useState<JalaliDateParts>({ ...EMPTY_JALALI_DATE });
   const [editStatus, setEditStatus] = useState<TaskStatus>("todo");
   const [editIsFocused, setEditIsFocused] = useState(false);
+  const [editIsImportant, setEditIsImportant] = useState(false);
+  const [editIsUrgent, setEditIsUrgent] = useState(false);
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const toastTimeoutsRef = useRef<number[]>([]);
@@ -502,6 +527,21 @@ export default function HomePage() {
   );
   const visibleUndoneTasks = useMemo(() => visibleTasks.filter((task) => task.status !== "done"), [visibleTasks]);
   const visibleDoneTasks = useMemo(() => visibleTasks.filter(isDoneTask), [visibleTasks]);
+  const activeTasks = useMemo(() => tasks.filter((task) => task.status !== "done"), [tasks]);
+  const matrixByQuadrant = useMemo(() => {
+    const grouped: Record<MatrixQuadrantKey, Task[]> = {
+      do_now: [],
+      schedule: [],
+      delegate: [],
+      eliminate: [],
+    };
+
+    activeTasks.forEach((task) => {
+      grouped[taskQuadrant(task)].push(task);
+    });
+
+    return grouped;
+  }, [activeTasks]);
   const totalTasksCount = tasks.length;
   const completedTasksCount = useMemo(() => tasks.filter(isDoneTask).length, [tasks]);
   const activeTasksCount = totalTasksCount - completedTasksCount;
@@ -518,6 +558,8 @@ export default function HomePage() {
     setEditDueDate(toJalaliDateParts(task.due_date));
     setEditStatus(task.status);
     setEditIsFocused(task.is_focused);
+    setEditIsImportant(task.is_important);
+    setEditIsUrgent(task.is_urgent);
   }, []);
 
   const closeEditModal = useCallback((force = false) => {
@@ -544,6 +586,8 @@ export default function HomePage() {
         status: "todo",
         due_date: null,
         is_focused: false,
+        is_important: false,
+        is_urgent: false,
       });
 
       if (!response.ok) {
@@ -572,6 +616,8 @@ export default function HomePage() {
         status: nextStatus,
         due_date: task.due_date,
         is_focused: nextStatus === "done" ? false : task.is_focused,
+        is_important: task.is_important,
+        is_urgent: task.is_urgent,
       });
 
       if (!response.ok) {
@@ -606,6 +652,8 @@ export default function HomePage() {
         status: task.status,
         due_date: task.due_date,
         is_focused: !task.is_focused,
+        is_important: task.is_important,
+        is_urgent: task.is_urgent,
       });
 
       if (!response.ok) {
@@ -615,6 +663,66 @@ export default function HomePage() {
       setOpenMenuKey(null);
       pushToast("success", task.is_focused ? "Focus removed." : "Task set as primary focus.");
       await loadTasks();
+    } catch (error) {
+      pushToast("error", error instanceof Error ? error.message : "Failed to update task");
+    } finally {
+      setBusyTaskId(null);
+      setBusyTaskAction(null);
+    }
+  }
+
+  async function handleToggleImportant(task: Task) {
+    setBusyTaskId(task.id);
+    setBusyTaskAction("matrix");
+
+    try {
+      const response = await put(`/planning/tasks/${task.id}`, {
+        title: task.title,
+        notes: task.notes,
+        status: task.status,
+        due_date: task.due_date,
+        is_focused: task.is_focused,
+        is_important: !task.is_important,
+        is_urgent: task.is_urgent,
+      });
+
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+
+      const updatedTask = (await response.json()) as Task;
+      setTasks((current) => current.map((item) => (item.id === updatedTask.id ? updatedTask : item)));
+      setOpenMenuKey(null);
+    } catch (error) {
+      pushToast("error", error instanceof Error ? error.message : "Failed to update task");
+    } finally {
+      setBusyTaskId(null);
+      setBusyTaskAction(null);
+    }
+  }
+
+  async function handleToggleUrgent(task: Task) {
+    setBusyTaskId(task.id);
+    setBusyTaskAction("matrix");
+
+    try {
+      const response = await put(`/planning/tasks/${task.id}`, {
+        title: task.title,
+        notes: task.notes,
+        status: task.status,
+        due_date: task.due_date,
+        is_focused: task.is_focused,
+        is_important: task.is_important,
+        is_urgent: !task.is_urgent,
+      });
+
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+
+      const updatedTask = (await response.json()) as Task;
+      setTasks((current) => current.map((item) => (item.id === updatedTask.id ? updatedTask : item)));
+      setOpenMenuKey(null);
     } catch (error) {
       pushToast("error", error instanceof Error ? error.message : "Failed to update task");
     } finally {
@@ -640,6 +748,8 @@ export default function HomePage() {
         status: editStatus,
         due_date: dueDate,
         is_focused: editStatus === "done" ? false : editIsFocused,
+        is_important: editIsImportant,
+        is_urgent: editIsUrgent,
       });
 
       if (!response.ok) {
@@ -710,7 +820,7 @@ export default function HomePage() {
     return <GuestHome />;
   }
 
-  const hasVisibleTasks = visibleFocusedTask !== null || visibleUndoneTasks.length > 0 || visibleDoneTasks.length > 0;
+  const hasVisibleListTasks = visibleFocusedTask !== null || visibleUndoneTasks.length > 0 || visibleDoneTasks.length > 0;
   const isConfirmationBusy = busyTaskAction === "delete" || isClearingCompleted;
 
   return (
@@ -756,7 +866,34 @@ export default function HomePage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3 md:justify-end">
-            <StatusFilterControl value={statusFilter} onChange={setStatusFilter} />
+            <div
+              className="surface-subtle inline-flex rounded-full p-1"
+              style={{ border: "1px solid color-mix(in srgb, var(--card-border) 72%, transparent)" }}
+            >
+              {[
+                { value: "list" as const, label: "List" },
+                { value: "matrix" as const, label: "Matrix" },
+              ].map((option) => {
+                const active = taskView === option.value;
+
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setTaskView(option.value)}
+                    className="rounded-full px-4 py-2 text-sm font-medium"
+                    style={
+                      active
+                        ? { backgroundColor: "var(--accent-tint)", color: "var(--accent)" }
+                        : { color: "var(--foreground-muted)" }
+                    }
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            {taskView === "list" ? <StatusFilterControl value={statusFilter} onChange={setStatusFilter} /> : null}
             <button
               type="button"
               onClick={() => setPendingConfirmation({ kind: "clear_completed" })}
@@ -782,7 +919,194 @@ export default function HomePage() {
               <div className="skeleton h-28 rounded-[32px]" />
               <div className="skeleton h-28 rounded-[32px]" />
             </div>
-          ) : !hasVisibleTasks ? (
+          ) : taskView === "matrix" ? (
+            activeTasks.length === 0 ? (
+              <div className="surface-card px-5 py-10 sm:px-6" style={{ borderRadius: "32px" }}>
+                <h3 className="text-lg font-semibold">No active tasks for matrix view</h3>
+                <p className="mt-2 max-w-xl text-sm leading-6" style={{ color: "var(--foreground-muted)" }}>
+                  Matrix view shows only active tasks. Move a done task back to active to classify it.
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-3 lg:grid-cols-2">
+                {MATRIX_QUADRANTS.map((quadrant) => {
+                  const quadrantTasks = matrixByQuadrant[quadrant.key];
+
+                  return (
+                    <article key={quadrant.key} className="surface-card rounded-[28px] px-4 py-4 sm:px-5 sm:py-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="text-lg font-semibold">{quadrant.title}</h3>
+                          <p className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
+                            {quadrant.description}
+                          </p>
+                        </div>
+                        <span className="status-badge rounded-full px-2.5 py-1 text-xs font-semibold">{quadrantTasks.length}</span>
+                      </div>
+
+                      {quadrantTasks.length === 0 ? (
+                        <p className="mt-3 text-sm" style={{ color: "var(--foreground-muted)" }}>
+                          No tasks in this quadrant.
+                        </p>
+                      ) : (
+                        <ul className="mt-3 space-y-2">
+                          {quadrantTasks.map((task) => {
+                            const isBusy = busyTaskId === task.id;
+                            const isTogglingTask = isBusy && busyTaskAction === "toggle";
+                            const isUpdatingTask = isBusy && busyTaskAction === "update";
+                            const isMatrixTaskBusy = isBusy && busyTaskAction === "matrix";
+
+                            return (
+                              <li key={task.id} className="group min-w-0">
+                                <div
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={() => openEditModal(task)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter" || event.key === " ") {
+                                      event.preventDefault();
+                                      openEditModal(task);
+                                    }
+                                  }}
+                                  className="surface-subtle flex h-full min-w-0 flex-col gap-3 rounded-[24px] px-3 py-3 text-left"
+                                  aria-label={`Open details for ${task.title}`}
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <p className="min-w-0 flex-1 text-sm font-semibold leading-6">{task.title}</p>
+                                    <div className={`flex items-start gap-1 ${CARD_ACTIONS_VISIBILITY_CLASS}`}>
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          void handleToggleDone(task);
+                                        }}
+                                        disabled={isBusy}
+                                        className="button-secondary inline-flex h-8 items-center justify-center rounded-full px-2 text-xs font-semibold disabled:opacity-60"
+                                        title="Mark as done"
+                                        aria-label="Mark as done"
+                                      >
+                                        {isTogglingTask ? (
+                                          <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                                        ) : (
+                                          <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                                        )}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          void handleToggleFocus(task);
+                                        }}
+                                        disabled={isBusy}
+                                        className="button-secondary inline-flex h-8 items-center justify-center rounded-full px-2 text-xs font-semibold disabled:opacity-60"
+                                        title={task.is_focused ? "Remove focus" : "Set as focus"}
+                                        aria-label={task.is_focused ? "Remove focus" : "Set as focus"}
+                                      >
+                                        {isUpdatingTask ? (
+                                          <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                                        ) : (
+                                          <Target className="h-3.5 w-3.5" aria-hidden="true" />
+                                        )}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          void handleToggleImportant(task);
+                                        }}
+                                        disabled={isBusy}
+                                        className="inline-flex h-8 items-center justify-center rounded-full border px-2 text-[11px] font-semibold disabled:opacity-60"
+                                        style={{
+                                          borderColor: "color-mix(in srgb, var(--card-border) 72%, transparent)",
+                                          backgroundColor: task.is_important
+                                            ? "color-mix(in srgb, var(--accent-tint) 74%, transparent)"
+                                            : "color-mix(in srgb, var(--background-elevated) 88%, transparent)",
+                                          color: task.is_important ? "var(--accent)" : "var(--foreground-muted)",
+                                        }}
+                                        title={task.is_important ? "Unset important" : "Set important"}
+                                        aria-label={task.is_important ? "Unset important" : "Set important"}
+                                      >
+                                        {isMatrixTaskBusy ? (
+                                          <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                                        ) : (
+                                          "I"
+                                        )}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          void handleToggleUrgent(task);
+                                        }}
+                                        disabled={isBusy}
+                                        className="inline-flex h-8 items-center justify-center rounded-full border px-2 text-[11px] font-semibold disabled:opacity-60"
+                                        style={{
+                                          borderColor: "color-mix(in srgb, var(--card-border) 72%, transparent)",
+                                          backgroundColor: task.is_urgent
+                                            ? "color-mix(in srgb, var(--danger-tint) 70%, transparent)"
+                                            : "color-mix(in srgb, var(--background-elevated) 88%, transparent)",
+                                          color: task.is_urgent ? "var(--danger)" : "var(--foreground-muted)",
+                                        }}
+                                        title={task.is_urgent ? "Unset urgent" : "Set urgent"}
+                                        aria-label={task.is_urgent ? "Unset urgent" : "Set urgent"}
+                                      >
+                                        {isMatrixTaskBusy ? (
+                                          <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                                        ) : (
+                                          "U"
+                                        )}
+                                      </button>
+                                      <ActionMenu
+                                        menuKey={`task-${task.id}`}
+                                        openMenuKey={openMenuKey}
+                                        onToggle={(menuKey) => setOpenMenuKey((current) => (current === menuKey ? null : menuKey))}
+                                      >
+                                        <ActionMenuItem onClick={() => openEditModal(task)}>
+                                          <span className="inline-flex items-center gap-2">
+                                            <PencilLine className="h-4 w-4" aria-hidden="true" />
+                                            Edit task
+                                          </span>
+                                        </ActionMenuItem>
+                                        <ActionMenuItem
+                                          tone="danger"
+                                          onClick={() => {
+                                            setOpenMenuKey(null);
+                                            setPendingConfirmation({ kind: "delete", task });
+                                          }}
+                                        >
+                                          <span className="inline-flex items-center gap-2">
+                                            <Trash2 className="h-4 w-4" aria-hidden="true" />
+                                            Delete task
+                                          </span>
+                                        </ActionMenuItem>
+                                      </ActionMenu>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs" style={{ color: "var(--foreground-muted)" }}>
+                                    {task.due_date ? (
+                                      <MetaItem icon={<CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />}>
+                                        {formatDueDate(task.due_date)}
+                                      </MetaItem>
+                                    ) : null}
+                                    {task.is_focused ? (
+                                      <MetaItem icon={<Target className="h-3.5 w-3.5" aria-hidden="true" />}>Focused</MetaItem>
+                                    ) : null}
+                                    {task.is_important ? <span className="status-badge rounded-full px-2 py-0.5">Important</span> : null}
+                                    {task.is_urgent ? <span className="status-badge rounded-full px-2 py-0.5">Urgent</span> : null}
+                                  </div>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            )
+          ) : !hasVisibleListTasks ? (
             <div
               className="surface-card px-5 py-10 sm:px-6"
               style={{ borderRadius: "32px" }}
@@ -1287,6 +1611,24 @@ export default function HomePage() {
                 <option value="todo">To do</option>
                 <option value="done">Done</option>
               </select>
+              <div className="mt-3 space-y-2">
+                <label className="inline-flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={editIsImportant}
+                    onChange={(event) => setEditIsImportant(event.target.checked)}
+                  />
+                  Important
+                </label>
+                <label className="inline-flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={editIsUrgent}
+                    onChange={(event) => setEditIsUrgent(event.target.checked)}
+                  />
+                  Urgent
+                </label>
+              </div>
             </div>
           </div>
 

@@ -12,6 +12,8 @@ status,
 due_date,
 completed_at,
 is_focused,
+is_important,
+is_urgent,
 created_at,
 updated_at
 """
@@ -53,6 +55,8 @@ async def create_task(
     due_date: date | None,
     completed_at: datetime | None,
     is_focused: bool,
+    is_important: bool,
+    is_urgent: bool,
 ) -> dict | None:
     query = f"""
         with lock_user as (
@@ -69,15 +73,15 @@ async def create_task(
             returning id
         ),
         inserted as (
-            insert into tasks (user_id, title, notes, status, due_date, completed_at, is_focused)
-            select $1, $2, $3, $4, $5, $6, $7
+            insert into tasks (user_id, title, notes, status, due_date, completed_at, is_focused, is_important, is_urgent)
+            select $1, $2, $3, $4, $5, $6, $7, $8, $9
             from lock_user
             left join lateral (select 1 from reset_focus limit 1) rf on true
             returning {TASK_COLUMNS}
         )
         select * from inserted
     """
-    rows = await db.execute(query, user_id, title, notes, status, due_date, completed_at, is_focused)
+    rows = await db.execute(query, user_id, title, notes, status, due_date, completed_at, is_focused, is_important, is_urgent)
     if not rows:
         return None
     return rows[0]
@@ -92,6 +96,8 @@ async def update_task(
     due_date: date | None,
     completed_at: datetime | None,
     is_focused: bool,
+    is_important: bool,
+    is_urgent: bool,
 ) -> dict | None:
     query = f"""
         with lock_user as (
@@ -124,6 +130,8 @@ async def update_task(
                 due_date = $6,
                 completed_at = $7,
                 is_focused = $8,
+                is_important = $9,
+                is_urgent = $10,
                 updated_at = now()
             from target
             left join lateral (select 1 from reset_focus limit 1) rf on true
@@ -137,12 +145,14 @@ async def update_task(
                 t.due_date,
                 t.completed_at,
                 t.is_focused,
+                t.is_important,
+                t.is_urgent,
                 t.created_at,
                 t.updated_at
         )
         select * from updated
     """
-    rows = await db.execute(query, task_id, user_id, title, notes, status, due_date, completed_at, is_focused)
+    rows = await db.execute(query, task_id, user_id, title, notes, status, due_date, completed_at, is_focused, is_important, is_urgent)
     if not rows:
         return None
     return rows[0]
