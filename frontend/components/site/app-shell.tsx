@@ -1,7 +1,9 @@
 "use client";
 
+import { toJalaali } from "jalaali-js";
 import {
   BookOpenText,
+  CalendarDays,
   LayoutGrid,
   ListTodo,
   LogOut,
@@ -12,8 +14,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useCallback, useEffect, useState } from "react";
 
+import { get } from "@/app/utilities/api";
 import ThemeToggle from "@/components/site/theme-toggle";
 
 type AppShellProps = {
@@ -25,6 +28,14 @@ type NavItem = {
   label: string;
   description: string;
   icon: "dashboard" | "tasks" | "okrs" | "glossary" | "admin";
+};
+
+type FocusedTask = {
+  id: number;
+  title: string;
+  due_date: string | null;
+  status: "todo" | "done";
+  is_focused: boolean;
 };
 
 const NAV_ITEMS: NavItem[] = [
@@ -61,18 +72,74 @@ function isItemActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function formatDueDate(value: string | null) {
+  if (!value) return null;
+  const [year, month, day] = value.split("-").map((part) => Number.parseInt(part, 10));
+  if (!year || !month || !day) return value;
+
+  const jalali = toJalaali(year, month, day);
+  return `${jalali.jy}/${String(jalali.jm).padStart(2, "0")}/${String(jalali.jd).padStart(2, "0")}`;
+}
+
 export default function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const currentSection = NAV_ITEMS.find((item) => isItemActive(pathname, item.href)) ?? NAV_ITEMS[0];
+  const [focusedTask, setFocusedTask] = useState<FocusedTask | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem("planning_sidebar_collapsed") === "true";
   });
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
+  const loadFocusedTask = useCallback(async () => {
+    try {
+      const response = await get("/planning/tasks/focused");
+      if (!response.ok) {
+        return;
+      }
+
+      const task = (await response.json()) as FocusedTask | null;
+      if (task?.is_focused && task.status !== "done") {
+        setFocusedTask(task);
+      } else {
+        setFocusedTask(null);
+      }
+    } catch {
+      // Keep shell resilient; task page still remains the source of truth.
+      setFocusedTask(null);
+    }
+  }, []);
+
   useEffect(() => {
     window.localStorage.setItem("planning_sidebar_collapsed", String(isCollapsed));
   }, [isCollapsed]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void loadFocusedTask();
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [loadFocusedTask, pathname]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void loadFocusedTask();
+    }, 60_000);
+
+    function onVisibilityChange() {
+      if (!document.hidden) {
+        void loadFocusedTask();
+      }
+    }
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [loadFocusedTask]);
+
+  const showFocusedTaskBanner = pathname !== "/tasks" && focusedTask !== null;
 
   return (
     <div className="min-h-screen">
@@ -168,6 +235,67 @@ export default function AppShell({ children }: AppShellProps) {
               );
             })}
           </nav>
+
+          {showFocusedTaskBanner ? (
+            <div className={`mt-3 ${isCollapsed ? "px-0" : "px-1"}`}>
+              {isCollapsed ? (
+                <Link
+                  href="/tasks"
+                  className="mx-auto flex h-11 w-11 items-center justify-center rounded-full border transition hover:scale-[1.03]"
+                  style={{
+                    borderColor: "color-mix(in srgb, var(--accent) 28%, transparent)",
+                    backgroundColor: "color-mix(in srgb, var(--accent-tint) 72%, transparent)",
+                    boxShadow: "0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent), var(--shadow-2)",
+                  }}
+                  title={`Primary focus: ${focusedTask.title}${focusedTask.due_date ? ` · ${formatDueDate(focusedTask.due_date)}` : ""}`}
+                >
+                  <Target className="h-4 w-4" aria-hidden="true" style={{ color: "var(--accent)" }} />
+                </Link>
+              ) : (
+                <Link
+                  href="/tasks"
+                  className="relative flex items-start justify-between gap-3 overflow-hidden rounded-2xl border px-3 py-3 transition hover:opacity-95"
+                  style={{
+                    borderColor: "color-mix(in srgb, var(--accent) 22%, transparent)",
+                    background:
+                      "linear-gradient(140deg, color-mix(in srgb, var(--accent-tint) 68%, transparent) 0%, color-mix(in srgb, var(--background-elevated) 94%, transparent) 55%)",
+                    boxShadow: "var(--shadow-1)",
+                  }}
+                >
+                  <span
+                    className="absolute left-0 top-0 h-full w-1"
+                    style={{ backgroundColor: "color-mix(in srgb, var(--accent) 72%, transparent)" }}
+                    aria-hidden="true"
+                  />
+                  <div className="min-w-0">
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]"
+                      style={{
+                        color: "var(--accent)",
+                        backgroundColor: "color-mix(in srgb, var(--accent-tint) 75%, transparent)",
+                      }}
+                    >
+                      <Target className="h-3 w-3" aria-hidden="true" />
+                      Focus now
+                    </span>
+                    <p className="mt-1 truncate text-sm font-semibold">{focusedTask.title}</p>
+                  </div>
+                  {focusedTask.due_date ? (
+                    <span
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-xs"
+                      style={{
+                        color: "var(--foreground-muted)",
+                        backgroundColor: "color-mix(in srgb, var(--background) 70%, transparent)",
+                      }}
+                    >
+                      <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+                      {formatDueDate(focusedTask.due_date)}
+                    </span>
+                  ) : null}
+                </Link>
+              )}
+            </div>
+          ) : null}
 
           <div className={`mt-auto space-y-3 ${isCollapsed ? "px-0" : "px-1"} pt-6`}>
             <Link

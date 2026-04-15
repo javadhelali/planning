@@ -6,6 +6,7 @@ import {
   PencilLine,
   Plus,
   Search,
+  Sparkles,
   Tags,
   Trash2,
 } from "lucide-react";
@@ -56,6 +57,30 @@ type GlossarySnapshot = {
   terms: GlossaryTerm[];
 };
 
+type AiModelKey = "high" | "medium" | "cheap";
+
+type GlossaryAIDraft = {
+  term: string;
+  short_definition: string;
+  simple_definition: string;
+  professional_definition: string;
+  related_sources: string | null;
+  note: string | null;
+  related_terms: string[];
+  suggested_label_names: string[];
+  label_ids: number[];
+  model_key: AiModelKey;
+  model: string;
+  usage: {
+    cost: number | null;
+    cost_currency: string | null;
+    prompt_tokens: number | null;
+    completion_tokens: number | null;
+    total_tokens: number | null;
+    reasoning_tokens: number | null;
+  };
+};
+
 type TermEditorState =
   | { mode: "create" }
   | { mode: "edit"; term: GlossaryTerm }
@@ -90,6 +115,28 @@ const LABEL_COLORS = [
   "#6366f1",
   "#8b5cf6",
   "#ec4899",
+];
+
+const AI_MODEL_OPTIONS: Array<{
+  key: AiModelKey;
+  label: string;
+  description: string;
+}> = [
+  {
+    key: "high",
+    label: "High · Claude 3.7 Sonnet",
+    description: "Best quality, slower, reasoning enabled.",
+  },
+  {
+    key: "medium",
+    label: "Medium · GPT-4o mini",
+    description: "Balanced quality and speed, reasoning enabled.",
+  },
+  {
+    key: "cheap",
+    label: "Cheap · Llama 3.1 8B",
+    description: "Lowest cost and fast generation.",
+  },
 ];
 
 async function readErrorMessage(response: Response) {
@@ -371,6 +418,10 @@ export default function GlossaryPage() {
   const [relatedTermsInput, setRelatedTermsInput] = useState("");
   const [selectedTermLabelIds, setSelectedTermLabelIds] = useState<number[]>([]);
   const [isTermSubmitting, setIsTermSubmitting] = useState(false);
+  const [isAiDraftModalOpen, setIsAiDraftModalOpen] = useState(false);
+  const [aiTermInput, setAiTermInput] = useState("");
+  const [aiModelKey, setAiModelKey] = useState<AiModelKey>("medium");
+  const [isAiDraftSubmitting, setIsAiDraftSubmitting] = useState(false);
 
   const [isLabelManagerOpen, setIsLabelManagerOpen] = useState(false);
   const [labelEditor, setLabelEditor] = useState<LabelEditorState>(null);
@@ -487,6 +538,7 @@ export default function GlossaryPage() {
   const openCreateTermModal = useCallback(() => {
     setTermViewer(null);
     setOpenMenuKey(null);
+    setIsAiDraftModalOpen(false);
     setTermEditor({ mode: "create" });
     setTermValue("");
     setShortDefinition("");
@@ -498,9 +550,23 @@ export default function GlossaryPage() {
     setSelectedTermLabelIds([]);
   }, []);
 
+  const openAiDraftModal = useCallback(() => {
+    setTermViewer(null);
+    setOpenMenuKey(null);
+    setIsAiDraftModalOpen(true);
+    setAiTermInput("");
+    setAiModelKey("medium");
+  }, []);
+
+  const closeAiDraftModal = useCallback(() => {
+    if (isAiDraftSubmitting) return;
+    setIsAiDraftModalOpen(false);
+  }, [isAiDraftSubmitting]);
+
   const openEditTermModal = useCallback((term: GlossaryTerm) => {
     setTermViewer(null);
     setOpenMenuKey(null);
+    setIsAiDraftModalOpen(false);
     setTermEditor({ mode: "edit", term });
     setTermValue(term.term);
     setShortDefinition(term.short_definition);
@@ -604,6 +670,48 @@ export default function GlossaryPage() {
       pushToast("error", error instanceof Error ? error.message : "Failed to save term");
     } finally {
       setIsTermSubmitting(false);
+      setBusyActionKey(null);
+    }
+  }
+
+  async function handleGenerateWithAi(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const cleanedTerm = aiTermInput.trim();
+    if (!cleanedTerm) return;
+
+    setIsAiDraftSubmitting(true);
+    setBusyActionKey("generate-ai-draft");
+
+    try {
+      const response = await post("/planning/glossary/terms/ai-draft", {
+        term: cleanedTerm,
+        model_key: aiModelKey,
+      });
+
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+
+      const draft = (await response.json()) as GlossaryAIDraft;
+      setIsAiDraftModalOpen(false);
+      setTermEditor({ mode: "create" });
+      setTermViewer(null);
+
+      setTermValue(draft.term || cleanedTerm);
+      setShortDefinition(draft.short_definition ?? "");
+      setSimpleDefinition(draft.simple_definition ?? "");
+      setProfessionalDefinition(draft.professional_definition ?? "");
+      setRelatedSources(draft.related_sources ?? "");
+      setNoteValue(draft.note ?? "");
+      setRelatedTermsInput((draft.related_terms ?? []).join(", "));
+      setSelectedTermLabelIds(draft.label_ids ?? []);
+
+      pushToast("success", `Draft generated with ${draft.model}.`);
+    } catch (error) {
+      pushToast("error", error instanceof Error ? error.message : "Failed to generate AI draft");
+    } finally {
+      setIsAiDraftSubmitting(false);
       setBusyActionKey(null);
     }
   }
@@ -745,6 +853,14 @@ export default function GlossaryPage() {
             </button>
             <button
               type="button"
+              onClick={openAiDraftModal}
+              className="button-secondary inline-flex h-11 items-center gap-2 rounded-full px-4 text-sm font-semibold"
+            >
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
+              Add with AI
+            </button>
+            <button
+              type="button"
               onClick={openCreateTermModal}
               className="button-primary inline-flex h-11 items-center gap-2 rounded-full px-4 text-sm font-semibold"
             >
@@ -847,6 +963,83 @@ export default function GlossaryPage() {
           </ul>
         )}
       </section>
+
+      <Modal
+        isOpen={isAiDraftModalOpen}
+        onClose={closeAiDraftModal}
+        title="Add Term With AI"
+        description="Enter a term and pick a model. AI will generate all glossary fields so you can review and save."
+      >
+        <form onSubmit={handleGenerateWithAi} className="space-y-4">
+          <div>
+            <label htmlFor="ai-term-input" className="text-sm font-semibold">
+              Term
+            </label>
+            <input
+              id="ai-term-input"
+              value={aiTermInput}
+              onChange={(event) => setAiTermInput(event.target.value)}
+              className="field mt-2 rounded-2xl px-4 py-3 text-sm"
+              placeholder="Example: Net Revenue Retention (NRR)"
+              required
+            />
+          </div>
+
+          <div>
+            <label htmlFor="ai-model-select" className="text-sm font-semibold">
+              Model
+            </label>
+            <select
+              id="ai-model-select"
+              value={aiModelKey}
+              onChange={(event) => setAiModelKey(event.target.value as AiModelKey)}
+              className="field mt-2 rounded-2xl px-4 py-3 text-sm"
+            >
+              {AI_MODEL_OPTIONS.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-2 text-xs leading-6" style={{ color: "var(--foreground-muted)" }}>
+              {AI_MODEL_OPTIONS.find((option) => option.key === aiModelKey)?.description}
+            </p>
+          </div>
+
+          <div
+            className="rounded-[24px] border px-4 py-4"
+            style={{
+              borderColor: "color-mix(in srgb, var(--card-border) 72%, transparent)",
+              backgroundColor: "color-mix(in srgb, var(--background-elevated) 86%, transparent)",
+            }}
+          >
+            <p className="text-sm font-semibold">How It Works</p>
+            <p className="mt-1 text-xs leading-6" style={{ color: "var(--foreground-muted)" }}>
+              High and medium models run with reasoning enabled for better structure. You can fully edit generated
+              content before saving the term.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={closeAiDraftModal}
+              disabled={isAiDraftSubmitting}
+              className="button-secondary rounded-2xl px-4 py-3 text-sm font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isAiDraftSubmitting}
+              className="button-primary inline-flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold"
+            >
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
+              {isAiDraftSubmitting ? "Generating..." : "Generate draft"}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       <Modal
         isOpen={termViewer !== null}

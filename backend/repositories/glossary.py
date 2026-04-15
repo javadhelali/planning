@@ -299,6 +299,8 @@ async def create_glossary_term(
         insert into glossary_terms (
             user_id,
             term,
+            definition,
+            notes,
             short_definition,
             simple_definition,
             professional_definition,
@@ -306,13 +308,15 @@ async def create_glossary_term(
             note,
             related_terms
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         returning id
     """
     rows = await db.execute(
         query,
         user_id,
         term,
+        professional_definition,
+        note,
         short_definition,
         simple_definition,
         professional_definition,
@@ -356,12 +360,14 @@ async def update_glossary_term(
         update glossary_terms
         set
             term = $3,
-            short_definition = $4,
-            simple_definition = $5,
-            professional_definition = $6,
-            related_sources = $7,
-            note = $8,
-            related_terms = $9,
+            definition = $4,
+            notes = $5,
+            short_definition = $6,
+            simple_definition = $7,
+            professional_definition = $8,
+            related_sources = $9,
+            note = $10,
+            related_terms = $11,
             updated_at = now()
         where user_id = $1
           and id = $2
@@ -372,6 +378,8 @@ async def update_glossary_term(
         user_id,
         term_id,
         term,
+        professional_definition,
+        note,
         short_definition,
         simple_definition,
         professional_definition,

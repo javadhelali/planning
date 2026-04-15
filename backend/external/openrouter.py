@@ -64,10 +64,7 @@ class OpenRouterClient:
 
         client_kwargs: dict[str, Any] = {"timeout": timeout}
         if self.proxy:
-            client_kwargs["proxies"] = {
-                "http://": self.proxy,
-                "https://": self.proxy,
-            }
+            client_kwargs["proxy"] = self.proxy
         start_time = time.time()
         async with httpx.AsyncClient(**client_kwargs) as client:
             response = await client.post(f"{self.base_url}/chat/completions", headers=self.headers, json=payload)

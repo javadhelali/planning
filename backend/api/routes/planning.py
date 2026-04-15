@@ -9,6 +9,7 @@ from repositories.tasks import (
     clear_completed_tasks,
     create_task,
     delete_task,
+    get_focused_task,
     list_tasks,
     update_task,
 )
@@ -74,6 +75,11 @@ async def get_tasks(
     user: dict = Depends(require_authenticated_user),
 ):
     return await list_tasks(user["id"], status_filter)
+
+
+@router.get("/tasks/focused", response_model=TaskResponse | None)
+async def get_focused_task_route(user: dict = Depends(require_authenticated_user)):
+    return await get_focused_task(user["id"])
 
 
 @router.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
