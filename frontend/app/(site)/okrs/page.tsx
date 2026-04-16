@@ -6,7 +6,6 @@ import {
   CalendarRange,
   Clock3,
   Copy,
-  Ellipsis,
   Gauge,
   LoaderCircle,
   ListTodo,
@@ -18,10 +17,13 @@ import {
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { del, get, patch, post, put } from "../../utilities/api";
+import { ActionMenu, ActionMenuItem } from "@/components/site/action-menu";
+import MetaItem from "@/components/site/meta-item";
 import Modal from "@/components/site/modal";
+import ToastStack from "@/components/site/toast-stack";
 
 type AuthState = "checking" | "authenticated" | "guest";
 type OkrView = "active" | "archived";
@@ -429,149 +431,6 @@ function ProgressBar({ value, expectedValue }: { value: number; expectedValue?: 
   );
 }
 
-function MetaItem({
-  icon,
-  children,
-}: {
-  icon: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span style={{ color: "var(--foreground-muted)" }}>{icon}</span>
-      <span>{children}</span>
-    </span>
-  );
-}
-
-function ActionMenuButton({
-  title,
-  isOpen,
-  onClick,
-}: {
-  title: string;
-  isOpen: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={title}
-      title={title}
-      onClick={onClick}
-      aria-expanded={isOpen}
-      className="flex h-9 w-9 items-center justify-center rounded-full border transition"
-      style={{
-        borderColor: isOpen
-          ? "color-mix(in srgb, var(--accent) 18%, transparent)"
-          : "color-mix(in srgb, var(--card-border) 62%, transparent)",
-        backgroundColor: isOpen
-          ? "color-mix(in srgb, var(--accent-tint) 62%, transparent)"
-          : "color-mix(in srgb, var(--background-elevated) 88%, transparent)",
-        color: isOpen ? "var(--accent)" : "var(--foreground-muted)",
-      }}
-    >
-      <Ellipsis className="h-4 w-4" aria-hidden="true" />
-    </button>
-  );
-}
-
-function ActionMenuItem({
-  children,
-  onClick,
-  tone = "default",
-  disabled = false,
-}: {
-  children: ReactNode;
-  onClick: () => void;
-  tone?: "default" | "danger";
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-2 text-left text-sm transition disabled:opacity-60"
-      style={
-        tone === "danger"
-          ? {
-              color: "var(--danger)",
-              backgroundColor: "color-mix(in srgb, var(--danger-tint) 34%, transparent)",
-            }
-          : {
-              color: "var(--foreground)",
-              backgroundColor: "transparent",
-            }
-      }
-    >
-      {children}
-    </button>
-  );
-}
-
-function ActionMenu({
-  menuKey,
-  openMenuKey,
-  onToggle,
-  children,
-}: {
-  menuKey: string;
-  openMenuKey: string | null;
-  onToggle: (menuKey: string) => void;
-  children: ReactNode;
-}) {
-  const isOpen = openMenuKey === menuKey;
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const [openDirection, setOpenDirection] = useState<"down" | "up">("down");
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const frameId = window.requestAnimationFrame(() => {
-      const root = rootRef.current;
-      const menu = menuRef.current;
-      if (!root || !menu) return;
-
-      const container = root.closest(".app-scroll");
-      const rootRect = root.getBoundingClientRect();
-      const menuHeight = menu.getBoundingClientRect().height;
-      const viewportTop = container instanceof HTMLElement ? container.getBoundingClientRect().top : 0;
-      const viewportBottom =
-        container instanceof HTMLElement ? container.getBoundingClientRect().bottom : window.innerHeight;
-      const spaceBelow = viewportBottom - rootRect.bottom;
-      const spaceAbove = rootRect.top - viewportTop;
-
-      if (spaceBelow < menuHeight + 8 && spaceAbove > spaceBelow) {
-        setOpenDirection("up");
-        return;
-      }
-
-      setOpenDirection("down");
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
-  }, [isOpen]);
-
-  return (
-    <div ref={rootRef} data-action-menu-root className="relative">
-      <ActionMenuButton title="Open actions" isOpen={isOpen} onClick={() => onToggle(menuKey)} />
-      {isOpen ? (
-        <div
-          ref={menuRef}
-          className={`surface-card absolute right-0 z-20 w-52 rounded-[24px] p-2 shadow-[var(--shadow-4)] ${
-            openDirection === "up" ? "bottom-11" : "top-11"
-          }`}
-          style={{ border: "1px solid color-mix(in srgb, var(--card-border) 72%, transparent)" }}
-        >
-          <div className="space-y-1">{children}</div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function ActionMenuStepper({
   value,
   step,
@@ -591,11 +450,11 @@ function ActionMenuStepper({
 }) {
   return (
     <div
-      className="rounded-[20px] px-3 py-3"
+      className="rounded-[24px] px-3 py-3"
       style={{ backgroundColor: "color-mix(in srgb, var(--background-elevated) 92%, transparent)" }}
     >
       <div
-        className="inline-flex w-full items-center justify-between rounded-[20px] border p-1"
+        className="inline-flex w-full items-center justify-between rounded-[24px] border p-1"
         style={{
           borderColor: "color-mix(in srgb, var(--card-border) 72%, transparent)",
           backgroundColor: "color-mix(in srgb, var(--background) 48%, var(--background-elevated))",
@@ -732,7 +591,7 @@ function GuestOkrPage() {
               Sign in to track OKRs
             </Link>
             <Link href="/" className="button-secondary rounded-full px-5 py-3 text-sm font-semibold">
-              Back to tasks
+              Back to dashboard
             </Link>
           </div>
         </section>
@@ -807,7 +666,7 @@ function GuestOkrPage() {
 function DashboardLoadingState() {
   return (
     <div className="space-y-3">
-      <div className="skeleton h-10 w-44 rounded-xl" />
+      <div className="skeleton h-10 w-44 rounded-2xl" />
       <div className="skeleton h-44 rounded-[28px]" />
       <div className="skeleton h-44 rounded-[28px]" />
       <div className="skeleton h-44 rounded-[28px]" />
@@ -1209,30 +1068,9 @@ export default function OkrsPage() {
 
   return (
     <div className="flex min-h-[calc(100vh-112px)] min-w-0 flex-col">
-      <div className="pointer-events-none fixed right-4 top-20 z-50 flex w-[min(92vw,380px)] flex-col gap-3">
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            className={`pointer-events-auto rounded-[24px] border px-4 py-3 shadow-[var(--shadow-4)] ${
-              toast.type === "success" ? "notice-success" : "notice-error"
-            }`}
-            role={toast.type === "success" ? "status" : "alert"}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <p className="text-sm leading-6">{toast.message}</p>
-              <button
-                type="button"
-                onClick={() => dismissToast(toast.id)}
-                className="rounded-full px-2 py-1 text-xs font-semibold"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
 
-      <section className="px-1 pb-5">
+      <section className="px-1 pb-4">
         <div className="flex flex-col gap-4">
           <div className="min-w-0 flex-1">
             <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">My OKRs</h2>
@@ -1402,6 +1240,7 @@ export default function OkrsPage() {
                         menuKey={objectiveMenuKey}
                         openMenuKey={openMenuKey}
                         onToggle={(menuKey) => setOpenMenuKey((current) => (current === menuKey ? null : menuKey))}
+                        adaptiveDirection
                       >
                         <ActionMenuItem
                           onClick={() => {
@@ -1542,6 +1381,7 @@ export default function OkrsPage() {
                                   menuKey={keyResultMenuKey}
                                   openMenuKey={openMenuKey}
                                   onToggle={(menuKey) => setOpenMenuKey((current) => (current === menuKey ? null : menuKey))}
+                                  adaptiveDirection
                                 >
                                   <ActionMenuStepper
                                     value={keyResult.current_value}

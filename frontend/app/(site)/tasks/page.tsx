@@ -7,7 +7,6 @@ import {
   Check,
   CheckCircle2,
   Circle,
-  Ellipsis,
   Eraser,
   ListFilter,
   LoaderCircle,
@@ -21,10 +20,13 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
-import { FormEvent, MouseEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { del, get, post, put } from "../../utilities/api";
+import { ActionMenu, ActionMenuItem } from "@/components/site/action-menu";
+import MetaItem from "@/components/site/meta-item";
 import Modal from "@/components/site/modal";
+import ToastStack from "@/components/site/toast-stack";
 
 type AuthState = "checking" | "authenticated" | "guest";
 type TaskStatus = "todo" | "done";
@@ -253,21 +255,6 @@ function StatusFilterControl({
   );
 }
 
-function MetaItem({
-  icon,
-  children,
-}: {
-  icon: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span style={{ color: "var(--foreground-muted)" }}>{icon}</span>
-      <span>{children}</span>
-    </span>
-  );
-}
-
 function MatrixStateChips({
   isImportant,
   isUrgent,
@@ -302,110 +289,6 @@ function MatrixStateChips({
         {isUrgent ? "Urgent" : "Not urgent"}
       </span>
     </>
-  );
-}
-
-function ActionMenuButton({
-  title,
-  isOpen,
-  onClick,
-}: {
-  title: string;
-  isOpen: boolean;
-  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={title}
-      title={title}
-      onClick={onClick}
-      aria-expanded={isOpen}
-      className="flex h-9 w-9 items-center justify-center rounded-full border transition"
-      style={{
-        borderColor: isOpen
-          ? "color-mix(in srgb, var(--accent) 18%, transparent)"
-          : "color-mix(in srgb, var(--card-border) 62%, transparent)",
-        backgroundColor: isOpen
-          ? "color-mix(in srgb, var(--accent-tint) 62%, transparent)"
-          : "color-mix(in srgb, var(--background-elevated) 88%, transparent)",
-        color: isOpen ? "var(--accent)" : "var(--foreground-muted)",
-      }}
-    >
-      <Ellipsis className="h-4 w-4" aria-hidden="true" />
-    </button>
-  );
-}
-
-function ActionMenuItem({
-  children,
-  onClick,
-  tone = "default",
-  disabled = false,
-}: {
-  children: ReactNode;
-  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
-  tone?: "default" | "danger";
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={(event) => {
-        event.stopPropagation();
-        onClick(event);
-      }}
-      disabled={disabled}
-      className="flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-2 text-left text-sm transition disabled:opacity-60"
-      style={
-        tone === "danger"
-          ? {
-              color: "var(--danger)",
-              backgroundColor: "color-mix(in srgb, var(--danger-tint) 34%, transparent)",
-            }
-          : {
-              color: "var(--foreground)",
-              backgroundColor: "transparent",
-            }
-      }
-    >
-      {children}
-    </button>
-  );
-}
-
-function ActionMenu({
-  menuKey,
-  openMenuKey,
-  onToggle,
-  children,
-}: {
-  menuKey: string;
-  openMenuKey: string | null;
-  onToggle: (menuKey: string) => void;
-  children: ReactNode;
-}) {
-  const isOpen = openMenuKey === menuKey;
-
-  return (
-    <div data-action-menu-root className="relative">
-      <ActionMenuButton
-        title="Open actions"
-        isOpen={isOpen}
-        onClick={(event) => {
-          event.stopPropagation();
-          onToggle(menuKey);
-        }}
-      />
-      {isOpen ? (
-        <div
-          className="surface-card absolute right-0 top-11 z-20 w-52 rounded-[24px] p-2 shadow-[var(--shadow-4)]"
-          style={{ border: "1px solid color-mix(in srgb, var(--card-border) 72%, transparent)" }}
-        >
-          <div className="space-y-1">{children}</div>
-        </div>
-      ) : null}
-    </div>
   );
 }
 
@@ -490,7 +373,7 @@ function GuestHome() {
 function DashboardLoadingState() {
   return (
     <div className="space-y-3">
-      <div className="skeleton h-10 w-44 rounded-xl" />
+      <div className="skeleton h-10 w-44 rounded-2xl" />
       <div className="skeleton h-28 rounded-[28px]" />
       <div className="skeleton h-28 rounded-[28px]" />
       <div className="skeleton h-28 rounded-[28px]" />
@@ -900,28 +783,7 @@ export default function HomePage() {
 
   return (
     <div className="flex min-h-[calc(100vh-112px)] min-w-0 flex-col">
-      <div className="pointer-events-none fixed right-4 top-20 z-50 flex w-[min(92vw,380px)] flex-col gap-3">
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            className={`pointer-events-auto rounded-[24px] border px-4 py-3 shadow-[var(--shadow-4)] ${
-              toast.type === "success" ? "notice-success" : "notice-error"
-            }`}
-            role={toast.type === "success" ? "status" : "alert"}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <p className="text-sm leading-6">{toast.message}</p>
-              <button
-                type="button"
-                onClick={() => dismissToast(toast.id)}
-                className="rounded-full px-2 py-1 text-xs font-semibold"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
 
       <section className="px-1 pb-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -1213,6 +1075,7 @@ export default function HomePage() {
                                             menuKey={`task-${task.id}`}
                                             openMenuKey={openMenuKey}
                                             onToggle={(menuKey) => setOpenMenuKey((current) => (current === menuKey ? null : menuKey))}
+                                            adaptiveDirection
                                           >
                                             <ActionMenuItem onClick={() => openEditModal(task)}>
                                               <span className="inline-flex items-center gap-2">
@@ -1382,6 +1245,7 @@ export default function HomePage() {
                           menuKey={`task-${visibleFocusedTask.id}`}
                           openMenuKey={openMenuKey}
                           onToggle={(menuKey) => setOpenMenuKey((current) => (current === menuKey ? null : menuKey))}
+                          adaptiveDirection
                         >
                           <ActionMenuItem onClick={() => openEditModal(visibleFocusedTask)}>
                             <span className="inline-flex items-center gap-2">
@@ -1495,6 +1359,7 @@ export default function HomePage() {
                                   menuKey={`task-${task.id}`}
                                   openMenuKey={openMenuKey}
                                   onToggle={(menuKey) => setOpenMenuKey((current) => (current === menuKey ? null : menuKey))}
+                                  adaptiveDirection
                                 >
                                   <ActionMenuItem onClick={() => openEditModal(task)}>
                                     <span className="inline-flex items-center gap-2">
@@ -1617,6 +1482,7 @@ export default function HomePage() {
                                   menuKey={`task-${task.id}`}
                                   openMenuKey={openMenuKey}
                                   onToggle={(menuKey) => setOpenMenuKey((current) => (current === menuKey ? null : menuKey))}
+                                  adaptiveDirection
                                 >
                                   <ActionMenuItem onClick={() => openEditModal(task)}>
                                     <span className="inline-flex items-center gap-2">

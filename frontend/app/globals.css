@@ -9,14 +9,15 @@
   --card: rgba(246, 248, 245, 0.86);
   --card-border: #c9d1dc;
   --card-border-strong: #9eabbc;
-  --accent: #446a9d;
-  --accent-hover: #355685;
+  --accent: #3f618f;
+  --accent-hover: #34527a;
   --accent-foreground: #ffffff;
   --accent-tint: #d7e3f5;
-  --danger: #b14b43;
+  --danger: #9e3f38;
   --danger-tint: #f3ddda;
-  --success: #557147;
+  --success: #4f6a42;
   --success-tint: #d8e7cf;
+  --shadow-1: 0 8px 20px rgba(18, 24, 34, 0.06), 0 2px 6px rgba(18, 24, 34, 0.04);
   --shadow-2: 0 12px 34px rgba(18, 24, 34, 0.06), 0 3px 10px rgba(18, 24, 34, 0.04);
   --shadow-4: 0 20px 52px rgba(18, 24, 34, 0.1), 0 10px 22px rgba(18, 24, 34, 0.06);
 }
@@ -30,14 +31,15 @@
   --card: rgba(246, 248, 245, 0.86);
   --card-border: #c9d1dc;
   --card-border-strong: #9eabbc;
-  --accent: #446a9d;
-  --accent-hover: #355685;
+  --accent: #3f618f;
+  --accent-hover: #34527a;
   --accent-foreground: #ffffff;
   --accent-tint: #d7e3f5;
-  --danger: #b14b43;
+  --danger: #9e3f38;
   --danger-tint: #f3ddda;
-  --success: #557147;
+  --success: #4f6a42;
   --success-tint: #d8e7cf;
+  --shadow-1: 0 8px 20px rgba(18, 24, 34, 0.06), 0 2px 6px rgba(18, 24, 34, 0.04);
   --shadow-2: 0 12px 34px rgba(18, 24, 34, 0.06), 0 3px 10px rgba(18, 24, 34, 0.04);
   --shadow-4: 0 20px 52px rgba(18, 24, 34, 0.1), 0 10px 22px rgba(18, 24, 34, 0.06);
 }
@@ -67,6 +69,7 @@
     --danger-tint: #52211d;
     --success: #a6c48f;
     --success-tint: #243228;
+    --shadow-1: 0 8px 20px rgba(0, 0, 0, 0.26), 0 2px 8px rgba(8, 12, 22, 0.2);
     --shadow-2: 0 12px 30px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(8, 12, 22, 0.24);
     --shadow-4: 0 24px 52px rgba(0, 0, 0, 0.42), 0 12px 26px rgba(8, 12, 22, 0.32);
   }
@@ -89,6 +92,7 @@
   --danger-tint: #52211d;
   --success: #a6c48f;
   --success-tint: #243228;
+  --shadow-1: 0 8px 20px rgba(0, 0, 0, 0.26), 0 2px 8px rgba(8, 12, 22, 0.2);
   --shadow-2: 0 12px 30px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(8, 12, 22, 0.24);
   --shadow-4: 0 24px 52px rgba(0, 0, 0, 0.42), 0 12px 26px rgba(8, 12, 22, 0.32);
 }
@@ -289,7 +293,7 @@ a {
 .focus-task-card {
   position: relative;
   overflow: hidden;
-  border-radius: 36px;
+  border-radius: 32px;
   border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--card-border));
   background:
     radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 16%, transparent), transparent 32%),

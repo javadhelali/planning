@@ -168,7 +168,7 @@ export default function AppShell({ children }: AppShellProps) {
           style={{ borderColor: "color-mix(in srgb, var(--card-border) 72%, transparent)" }}
         >
           <div className={`flex items-center ${isCollapsed ? "justify-center" : "justify-between"} px-2`}>
-            <Link href="/" className={`flex items-center rounded-[20px] py-2 ${isCollapsed ? "justify-center" : "gap-3 px-1"}`}>
+            <Link href="/" className={`flex items-center rounded-[24px] py-2 ${isCollapsed ? "justify-center" : "gap-3 px-1"}`}>
               <span
                 className="flex h-11 w-11 items-center justify-center rounded-2xl text-base font-semibold"
                 style={{ backgroundColor: "var(--accent-tint)", color: "var(--accent)" }}

@@ -114,7 +114,7 @@ function keyResultHealth(okr: Okr, keyResult: KeyResult, today: string): Health 
 function DashboardLoading() {
   return (
     <div className="space-y-3">
-      <div className="skeleton h-10 w-52 rounded-xl" />
+      <div className="skeleton h-10 w-52 rounded-2xl" />
       <div className="grid gap-3 lg:grid-cols-2">
         <div className="skeleton h-36 rounded-[28px]" />
         <div className="skeleton h-36 rounded-[28px]" />
@@ -126,16 +126,43 @@ function DashboardLoading() {
 
 function GuestDashboard() {
   return (
-    <div className="surface-card rounded-[32px] px-6 py-8 sm:px-8">
-      <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">Dashboard</h2>
-      <p className="mt-2 text-sm leading-6 sm:text-base" style={{ color: "var(--foreground-muted)" }}>
-        Sign in to see your task and OKR report.
-      </p>
-      <div className="mt-6">
-        <Link href="/login" className="button-primary inline-flex rounded-full px-5 py-3 text-sm font-semibold">
-          Sign in
-        </Link>
-      </div>
+    <div className="content-width mx-auto px-4 py-10 sm:px-6 sm:py-14">
+      <main className="grid gap-6 lg:grid-cols-[minmax(0,1.12fr)_minmax(320px,0.88fr)]">
+        <section className="surface-card rounded-[28px] px-6 py-8 sm:px-8 sm:py-10">
+          <span
+            className="inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]"
+            style={{ backgroundColor: "var(--accent-tint)", color: "var(--accent)" }}
+          >
+            Workspace overview
+          </span>
+          <h1 className="mt-5 max-w-2xl text-4xl font-semibold tracking-tight sm:text-5xl">See your planning system at a glance.</h1>
+          <p className="mt-4 max-w-xl text-base leading-7" style={{ color: "var(--foreground-muted)" }}>
+            Sign in to track task flow, mission execution, and objective health from one shared dashboard.
+          </p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link href="/login" className="button-primary inline-flex rounded-full px-5 py-3 text-sm font-semibold">
+              Sign in
+            </Link>
+            <Link href="/tasks" className="button-secondary inline-flex rounded-full px-5 py-3 text-sm font-semibold">
+              Open tasks
+            </Link>
+          </div>
+        </section>
+
+        <aside className="surface-card rounded-[28px] p-6 sm:p-7">
+          <p className="text-sm font-semibold">Snapshot preview</p>
+          <p className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
+            Signed-in summary cards for tasks, missions, and OKRs.
+          </p>
+          <div className="mt-6 space-y-3">
+            {["Tasks: 14 total", "Missions: 4 active", "OKRs: 3 active"].map((item) => (
+              <article key={item} className="surface-subtle rounded-3xl p-4">
+                <p className="text-sm font-semibold">{item}</p>
+              </article>
+            ))}
+          </div>
+        </aside>
+      </main>
     </div>
   );
 }
@@ -251,8 +278,8 @@ export default function HomePage() {
   }
 
   return (
-    <div className="space-y-4">
-      <section className="px-1">
+    <div className="flex min-h-[calc(100vh-112px)] min-w-0 flex-col">
+      <section className="px-1 pb-4">
         <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">Dashboard</h2>
         <p className="mt-1 text-sm leading-6 sm:text-base" style={{ color: "var(--foreground-muted)" }}>
           Quick summary of your tasks, missions, and OKR performance.
@@ -270,114 +297,116 @@ export default function HomePage() {
         </section>
       ) : null}
 
-      <section className="grid gap-3 lg:grid-cols-3">
-        <article className="surface-card rounded-[28px] px-5 py-5 sm:px-6">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold">Tasks</p>
-            <ListTodo className="h-5 w-5" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" />
-          </div>
-          <p className="mt-4 text-3xl font-semibold">{totalTasks}</p>
-          <p className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
-            {todoTasks} to do, {doneTasks} done
-          </p>
-          <Link href="/tasks" className="button-secondary mt-5 inline-flex rounded-full px-4 py-2 text-sm font-medium">
-            Open tasks
-          </Link>
-        </article>
+      <section className="min-w-0 flex-1 space-y-4">
+        <div className="grid gap-3 lg:grid-cols-3">
+          <article className="surface-card rounded-[28px] px-5 py-5 sm:px-6">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold">Tasks</p>
+              <ListTodo className="h-5 w-5" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" />
+            </div>
+            <p className="mt-4 text-3xl font-semibold">{totalTasks}</p>
+            <p className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
+              {todoTasks} to do, {doneTasks} done
+            </p>
+            <Link href="/tasks" className="button-secondary mt-5 inline-flex rounded-full px-4 py-2 text-sm font-medium">
+              Open tasks
+            </Link>
+          </article>
 
-        <article className="surface-card rounded-[28px] px-5 py-5 sm:px-6">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold">Missions</p>
-            <BriefcaseBusiness className="h-5 w-5" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" />
-          </div>
-          <p className="mt-4 text-3xl font-semibold">{missions.length}</p>
-          <p className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
-            {nextStepsCount} with a next step
-          </p>
-          <p className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
-            {totalMissionSteps} total steps
-          </p>
-          <Link href="/missions" className="button-secondary mt-5 inline-flex rounded-full px-4 py-2 text-sm font-medium">
-            Open missions
-          </Link>
-        </article>
+          <article className="surface-card rounded-[28px] px-5 py-5 sm:px-6">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold">Missions</p>
+              <BriefcaseBusiness className="h-5 w-5" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" />
+            </div>
+            <p className="mt-4 text-3xl font-semibold">{missions.length}</p>
+            <p className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
+              {nextStepsCount} with a next step
+            </p>
+            <p className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
+              {totalMissionSteps} total steps
+            </p>
+            <Link href="/missions" className="button-secondary mt-5 inline-flex rounded-full px-4 py-2 text-sm font-medium">
+              Open missions
+            </Link>
+          </article>
 
-        <article className="surface-card rounded-[28px] px-5 py-5 sm:px-6">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold">OKRs</p>
-            <Target className="h-5 w-5" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" />
-          </div>
-          <p className="mt-4 text-3xl font-semibold">{okrs.length}</p>
-          <p className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
-            {activeOkrs.length} active, {archivedOkrs.length} archived
-          </p>
-          <Link href="/okrs" className="button-secondary mt-5 inline-flex rounded-full px-4 py-2 text-sm font-medium">
-            Open OKRs
-          </Link>
-        </article>
-      </section>
-
-      <section className="surface-card rounded-[28px] px-5 py-5 sm:px-6">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold">OKR report</h3>
-          <TrendingUp className="h-5 w-5" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" />
+          <article className="surface-card rounded-[28px] px-5 py-5 sm:px-6">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold">OKRs</p>
+              <Target className="h-5 w-5" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" />
+            </div>
+            <p className="mt-4 text-3xl font-semibold">{okrs.length}</p>
+            <p className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
+              {activeOkrs.length} active, {archivedOkrs.length} archived
+            </p>
+            <Link href="/okrs" className="button-secondary mt-5 inline-flex rounded-full px-4 py-2 text-sm font-medium">
+              Open OKRs
+            </Link>
+          </article>
         </div>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="surface-subtle rounded-2xl px-4 py-3">
-            <p className="text-xs uppercase tracking-[0.12em]" style={{ color: "var(--foreground-muted)" }}>
-              Avg progress
-            </p>
-            <p className="mt-2 text-2xl font-semibold">{Math.round(averageOkrProgress)}%</p>
+        <section className="surface-card rounded-[28px] px-5 py-5 sm:px-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold">OKR report</h3>
+            <TrendingUp className="h-5 w-5" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" />
           </div>
-          <div className="surface-subtle rounded-2xl px-4 py-3">
-            <p className="text-xs uppercase tracking-[0.12em]" style={{ color: "var(--foreground-muted)" }}>
-              Healthy KRs
-            </p>
-            <p className="mt-2 text-2xl font-semibold">{Math.round(healthyRate)}%</p>
-          </div>
-          <div className="surface-subtle rounded-2xl px-4 py-3">
-            <p className="text-xs uppercase tracking-[0.12em]" style={{ color: "var(--foreground-muted)" }}>
-              Ending in 7 days
-            </p>
-            <p className="mt-2 text-2xl font-semibold">{endingSoonCount}</p>
-          </div>
-          <div className="surface-subtle rounded-2xl px-4 py-3">
-            <p className="text-xs uppercase tracking-[0.12em]" style={{ color: "var(--foreground-muted)" }}>
-              Overdue active OKRs
-            </p>
-            <p className="mt-2 text-2xl font-semibold">{overdueCount}</p>
-          </div>
-        </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-2xl px-4 py-3" style={{ backgroundColor: "color-mix(in srgb, var(--success-tint) 74%, transparent)" }}>
-            <p className="text-xs font-medium" style={{ color: "var(--success)" }}>Ahead</p>
-            <p className="mt-1 text-lg font-semibold">{healthCounts.ahead}</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="surface-subtle rounded-2xl px-4 py-3">
+              <p className="text-xs uppercase tracking-[0.12em]" style={{ color: "var(--foreground-muted)" }}>
+                Avg progress
+              </p>
+              <p className="mt-2 text-2xl font-semibold">{Math.round(averageOkrProgress)}%</p>
+            </div>
+            <div className="surface-subtle rounded-2xl px-4 py-3">
+              <p className="text-xs uppercase tracking-[0.12em]" style={{ color: "var(--foreground-muted)" }}>
+                Healthy KRs
+              </p>
+              <p className="mt-2 text-2xl font-semibold">{Math.round(healthyRate)}%</p>
+            </div>
+            <div className="surface-subtle rounded-2xl px-4 py-3">
+              <p className="text-xs uppercase tracking-[0.12em]" style={{ color: "var(--foreground-muted)" }}>
+                Ending in 7 days
+              </p>
+              <p className="mt-2 text-2xl font-semibold">{endingSoonCount}</p>
+            </div>
+            <div className="surface-subtle rounded-2xl px-4 py-3">
+              <p className="text-xs uppercase tracking-[0.12em]" style={{ color: "var(--foreground-muted)" }}>
+                Overdue active OKRs
+              </p>
+              <p className="mt-2 text-2xl font-semibold">{overdueCount}</p>
+            </div>
           </div>
-          <div className="rounded-2xl px-4 py-3" style={{ backgroundColor: "color-mix(in srgb, var(--accent-tint) 74%, transparent)" }}>
-            <p className="text-xs font-medium" style={{ color: "var(--accent)" }}>On track</p>
-            <p className="mt-1 text-lg font-semibold">{healthCounts.on_track}</p>
-          </div>
-          <div className="rounded-2xl px-4 py-3" style={{ backgroundColor: "color-mix(in srgb, var(--background-subtle) 88%, transparent)" }}>
-            <p className="text-xs font-medium" style={{ color: "var(--foreground-muted)" }}>Off track</p>
-            <p className="mt-1 text-lg font-semibold">{healthCounts.off_track}</p>
-          </div>
-          <div className="rounded-2xl px-4 py-3" style={{ backgroundColor: "color-mix(in srgb, var(--danger-tint) 72%, transparent)" }}>
-            <p className="text-xs font-medium" style={{ color: "var(--danger)" }}>Critical</p>
-            <p className="mt-1 text-lg font-semibold">{healthCounts.critical}</p>
-          </div>
-        </div>
 
-        {totalRatedKeyResults === 0 ? (
-          <p className="mt-4 text-sm" style={{ color: "var(--foreground-muted)" }}>
-            Add key results to start seeing OKR health reporting.
-          </p>
-        ) : (
-          <p className="mt-4 text-sm" style={{ color: "var(--foreground-muted)" }}>
-            {activeKeyResults.length} active key results are being tracked across {activeOkrs.length} active objectives.
-          </p>
-        )}
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-2xl px-4 py-3" style={{ backgroundColor: "color-mix(in srgb, var(--success-tint) 74%, transparent)" }}>
+              <p className="text-xs font-medium" style={{ color: "var(--success)" }}>Ahead</p>
+              <p className="mt-1 text-lg font-semibold">{healthCounts.ahead}</p>
+            </div>
+            <div className="rounded-2xl px-4 py-3" style={{ backgroundColor: "color-mix(in srgb, var(--accent-tint) 74%, transparent)" }}>
+              <p className="text-xs font-medium" style={{ color: "var(--accent)" }}>On track</p>
+              <p className="mt-1 text-lg font-semibold">{healthCounts.on_track}</p>
+            </div>
+            <div className="rounded-2xl px-4 py-3" style={{ backgroundColor: "color-mix(in srgb, var(--background-subtle) 88%, transparent)" }}>
+              <p className="text-xs font-medium" style={{ color: "var(--foreground-muted)" }}>Off track</p>
+              <p className="mt-1 text-lg font-semibold">{healthCounts.off_track}</p>
+            </div>
+            <div className="rounded-2xl px-4 py-3" style={{ backgroundColor: "color-mix(in srgb, var(--danger-tint) 72%, transparent)" }}>
+              <p className="text-xs font-medium" style={{ color: "var(--danger)" }}>Critical</p>
+              <p className="mt-1 text-lg font-semibold">{healthCounts.critical}</p>
+            </div>
+          </div>
+
+          {totalRatedKeyResults === 0 ? (
+            <p className="mt-4 text-sm" style={{ color: "var(--foreground-muted)" }}>
+              Add key results to start seeing OKR health reporting.
+            </p>
+          ) : (
+            <p className="mt-4 text-sm" style={{ color: "var(--foreground-muted)" }}>
+              {activeKeyResults.length} active key results are being tracked across {activeOkrs.length} active objectives.
+            </p>
+          )}
+        </section>
       </section>
 
       {isLoading ? (
