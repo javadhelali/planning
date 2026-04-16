@@ -252,7 +252,7 @@ function GuestHome() {
             <article className="surface-subtle rounded-3xl p-4">
               <p className="font-medium">1. Launch paid pilot</p>
             </article>
-            <article className="mission-next-step-card rounded-3xl border p-4">
+            <article className="surface-subtle mission-next-step-card rounded-3xl p-4">
               <div className="mission-next-step-content">
                 <span className="focus-task-badge inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em]">
                   <Sparkles className="h-3 w-3" aria-hidden="true" />
@@ -807,7 +807,7 @@ export default function MissionsPage() {
 
               return (
                 <li key={mission.id} className="group/mission min-w-0">
-                  <div className="surface-subtle rounded-[28px] px-4 py-4 sm:px-5 sm:py-5">
+                  <div className="surface-card rounded-[28px] px-4 py-4 sm:px-5 sm:py-5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
@@ -905,17 +905,7 @@ export default function MissionsPage() {
 
                             return (
                               <li key={step.id}>
-                                <div
-                                  className={`group/step rounded-[28px] border px-4 py-4 sm:px-5 sm:py-5 ${step.is_next ? "mission-next-step-card" : ""}`}
-                                  style={
-                                    step.is_next
-                                      ? undefined
-                                      : {
-                                          borderColor: "color-mix(in srgb, var(--card-border) 72%, transparent)",
-                                          backgroundColor: "color-mix(in srgb, var(--background-elevated) 88%, transparent)",
-                                        }
-                                  }
-                                >
+                                <div className={`group/step surface-subtle rounded-[28px] px-4 py-4 sm:px-5 sm:py-5 ${step.is_next ? "mission-next-step-card" : ""}`}>
                                   <div className={`${step.is_next ? "mission-next-step-content" : ""} flex items-start justify-between gap-3`}>
                                     <div className="min-w-0 flex-1">
                                       {step.is_next ? (
