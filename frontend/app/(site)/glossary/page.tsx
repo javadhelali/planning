@@ -14,7 +14,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { del, get, post, put } from "../../utilities/api";
+import { del, get, hasPlanningSession, post, put } from "../../utilities/api";
 import { GLOSSARY_LABEL_COLORS, GLOSSARY_LABEL_FALLBACK_COLOR } from "../../utilities/design-tokens";
 import { ActionMenu, ActionMenuItem } from "@/components/site/action-menu";
 import Modal from "@/components/site/modal";
@@ -109,7 +109,6 @@ type ToastMessage = {
   message: string;
 };
 
-const SESSION_COOKIE_KEY = "planning_session";
 const CARD_ACTIONS_VISIBILITY_CLASS =
   "md:invisible md:opacity-0 md:pointer-events-none md:transition-opacity md:group-hover/term:visible md:group-hover/term:opacity-100 md:group-hover/term:pointer-events-auto";
 
@@ -149,13 +148,6 @@ async function readErrorMessage(response: Response) {
   const payload = await response.json().catch(() => ({}));
   if (typeof payload?.detail === "string") return payload.detail;
   return `Request failed (${response.status})`;
-}
-
-function hasSessionCookie() {
-  return document.cookie
-    .split(";")
-    .map((part) => part.trim())
-    .some((part) => part.startsWith(`${SESSION_COOKIE_KEY}=`));
 }
 
 function normalizeHexColor(value: string) {
@@ -421,7 +413,7 @@ export default function GlossaryPage() {
   }, [pushToast]);
 
   useEffect(() => {
-    setAuthState(hasSessionCookie() ? "authenticated" : "guest");
+    setAuthState(hasPlanningSession() ? "authenticated" : "guest");
   }, []);
 
   useEffect(() => {

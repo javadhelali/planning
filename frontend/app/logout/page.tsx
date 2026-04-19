@@ -2,15 +2,12 @@
 
 import { useEffect } from "react";
 
-import { post } from "../utilities/api";
-
-const SESSION_STORAGE_KEY = "planning_session";
-const SESSION_COOKIE_KEY = "planning_session";
+import { clearPlanningSession, getPlanningToken, post } from "../utilities/api";
 
 export default function LogoutPage() {
   useEffect(() => {
     const runLogout = async () => {
-      const token = window.localStorage.getItem(SESSION_STORAGE_KEY);
+      const token = getPlanningToken();
 
       if (token) {
         try {
@@ -20,8 +17,7 @@ export default function LogoutPage() {
         }
       }
 
-      window.localStorage.removeItem(SESSION_STORAGE_KEY);
-      document.cookie = `${SESSION_COOKIE_KEY}=; path=/; max-age=0`;
+      clearPlanningSession();
       window.location.replace("/login");
     };
 

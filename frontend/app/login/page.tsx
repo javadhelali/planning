@@ -4,11 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 
-import { post } from "../utilities/api";
-
-const SESSION_STORAGE_KEY = "planning_session";
-const SESSION_COOKIE_KEY = "planning_session";
-const SESSION_COOKIE_TTL_SECONDS = 60 * 60 * 24 * 7;
+import { hasPlanningSession, post, setPlanningSession } from "../utilities/api";
 
 type LoginResponse = {
   token: string;
@@ -33,8 +29,7 @@ export default function LoginPage() {
   const [message, setMessage] = useState<string | null>("Sign in to continue to your workspace.");
 
   useEffect(() => {
-    const token = window.localStorage.getItem(SESSION_STORAGE_KEY);
-    if (token) {
+    if (hasPlanningSession()) {
       window.location.replace("/");
     }
   }, []);
@@ -69,8 +64,7 @@ export default function LoginPage() {
       }
 
       const payload = (await loginResponse.json()) as LoginResponse;
-      window.localStorage.setItem(SESSION_STORAGE_KEY, payload.token);
-      document.cookie = `${SESSION_COOKIE_KEY}=${encodeURIComponent(payload.token)}; path=/; max-age=${SESSION_COOKIE_TTL_SECONDS}; samesite=lax`;
+      setPlanningSession(payload.token);
       window.location.replace("/");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Failed to authenticate user");
@@ -125,7 +119,7 @@ export default function LoginPage() {
           </div>
           <Link href="/" className="button-ghost mt-8 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            Back to overview
+            Back to home
           </Link>
         </section>
 

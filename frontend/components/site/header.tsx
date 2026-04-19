@@ -18,7 +18,7 @@ export default function Header({ isAuthenticated }: HeaderProps) {
         { href: "/glossary", label: "Glossary" },
         { href: "/admin", label: "Admin" },
       ]
-    : [{ href: "/", label: "Overview" }];
+    : [];
 
   return (
     <header className="border-b" style={{ borderColor: "var(--card-border)" }}>

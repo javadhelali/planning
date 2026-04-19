@@ -4,7 +4,7 @@ import { BriefcaseBusiness, ListTodo, LoaderCircle, Target, TrendingUp } from "l
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { get } from "../utilities/api";
+import { get, hasPlanningSession } from "../utilities/api";
 
 type AuthState = "checking" | "authenticated" | "guest";
 
@@ -40,20 +40,12 @@ type Mission = {
 
 type Health = "ahead" | "on_track" | "off_track" | "critical";
 
-const SESSION_COOKIE_KEY = "planning_session";
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 async function readErrorMessage(response: Response) {
   const payload = await response.json().catch(() => ({}));
   if (typeof payload?.detail === "string") return payload.detail;
   return `Request failed (${response.status})`;
-}
-
-function hasSessionCookie() {
-  return document.cookie
-    .split(";")
-    .map((part) => part.trim())
-    .some((part) => part.startsWith(`${SESSION_COOKIE_KEY}=`));
 }
 
 function parseDateString(value: string) {
@@ -127,41 +119,22 @@ function DashboardLoading() {
 function GuestDashboard() {
   return (
     <div className="content-width mx-auto px-4 py-10 sm:px-6 sm:py-14">
-      <main className="grid gap-6 lg:grid-cols-[minmax(0,1.12fr)_minmax(320px,0.88fr)]">
-        <section className="surface-card rounded-[28px] px-6 py-8 sm:px-8 sm:py-10">
-          <span
-            className="inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]"
-            style={{ backgroundColor: "var(--accent-tint)", color: "var(--accent)" }}
-          >
-            Workspace overview
-          </span>
-          <h1 className="mt-5 max-w-2xl text-4xl font-semibold tracking-tight sm:text-5xl">See your planning system at a glance.</h1>
-          <p className="mt-4 max-w-xl text-base leading-7" style={{ color: "var(--foreground-muted)" }}>
-            Sign in to track task flow, mission execution, and objective health from one shared dashboard.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/login" className="button-primary inline-flex rounded-full px-5 py-3 text-sm font-semibold">
-              Sign in
-            </Link>
-            <Link href="/tasks" className="button-secondary inline-flex rounded-full px-5 py-3 text-sm font-semibold">
-              Open tasks
-            </Link>
-          </div>
-        </section>
-
-        <aside className="surface-card rounded-[28px] p-6 sm:p-7">
-          <p className="text-sm font-semibold">Snapshot preview</p>
-          <p className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
-            Signed-in summary cards for tasks, missions, and OKRs.
-          </p>
-          <div className="mt-6 space-y-3">
-            {["Tasks: 14 total", "Missions: 4 active", "OKRs: 3 active"].map((item) => (
-              <article key={item} className="surface-subtle rounded-3xl p-4">
-                <p className="text-sm font-semibold">{item}</p>
-              </article>
-            ))}
-          </div>
-        </aside>
+      <main className="surface-card rounded-[28px] px-6 py-10 sm:px-8 sm:py-12">
+        <span
+          className="inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]"
+          style={{ backgroundColor: "var(--accent-tint)", color: "var(--accent)" }}
+        >
+          Welcome
+        </span>
+        <h1 className="mt-5 max-w-2xl text-4xl font-semibold tracking-tight sm:text-5xl">Welcome to Planning.</h1>
+        <p className="mt-4 max-w-xl text-base leading-7" style={{ color: "var(--foreground-muted)" }}>
+          Sign in to access your workspace.
+        </p>
+        <div className="mt-8">
+          <Link href="/login" className="button-primary inline-flex rounded-full px-5 py-3 text-sm font-semibold">
+            Sign in
+          </Link>
+        </div>
       </main>
     </div>
   );
@@ -204,7 +177,7 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    setAuthState(hasSessionCookie() ? "authenticated" : "guest");
+    setAuthState(hasPlanningSession() ? "authenticated" : "guest");
   }, []);
 
   useEffect(() => {

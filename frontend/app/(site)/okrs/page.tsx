@@ -19,7 +19,7 @@ import {
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { del, get, patch, post, put } from "../../utilities/api";
+import { del, get, hasPlanningSession, patch, post, put } from "../../utilities/api";
 import { ActionMenu, ActionMenuItem } from "@/components/site/action-menu";
 import MetaItem from "@/components/site/meta-item";
 import Modal from "@/components/site/modal";
@@ -81,7 +81,6 @@ type PendingConfirmation =
   | { kind: "key_result"; objectiveTitle: string; keyResult: KeyResult }
   | null;
 
-const SESSION_COOKIE_KEY = "planning_session";
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const EMPTY_JALALI_DATE: JalaliDateParts = { year: "", month: "", day: "" };
 const OBJECTIVE_CARD_ACTIONS_VISIBILITY_CLASS =
@@ -93,13 +92,6 @@ async function readErrorMessage(response: Response) {
   const payload = await response.json().catch(() => ({}));
   if (typeof payload?.detail === "string") return payload.detail;
   return `Request failed (${response.status})`;
-}
-
-function hasSessionCookie() {
-  return document.cookie
-    .split(";")
-    .map((part) => part.trim())
-    .some((part) => part.startsWith(`${SESSION_COOKIE_KEY}=`));
 }
 
 function parseDateString(value: string) {
@@ -783,7 +775,7 @@ export default function OkrsPage() {
   }, [pushToast]);
 
   useEffect(() => {
-    setAuthState(hasSessionCookie() ? "authenticated" : "guest");
+    setAuthState(hasPlanningSession() ? "authenticated" : "guest");
   }, []);
 
   useEffect(() => {

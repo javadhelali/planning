@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from databases.postgres import db
 
 
@@ -21,6 +23,20 @@ s.created_at as step_created_at,
 s.updated_at as step_updated_at
 """
 
+MISSION_LOG_ENTRY_COLUMNS = """
+l.id,
+l.mission_id,
+l.author_id,
+l.text,
+l.entry_type,
+l.importance,
+l.tags,
+l.happened_at,
+l.source,
+l.created_at,
+l.updated_at
+"""
+
 
 async def _get_mission(user_id: int, mission_id: int) -> dict | None:
     query = f"""
@@ -37,6 +53,7 @@ async def _get_mission(user_id: int, mission_id: int) -> dict | None:
     grouped = _group_missions(rows)
     if not grouped:
         return None
+    await _attach_log_entries(user_id, grouped)
     return grouped[0]
 
 
@@ -56,6 +73,7 @@ def _group_missions(rows: list[dict] | None) -> list[dict]:
                 "created_at": row["created_at"],
                 "updated_at": row["updated_at"],
                 "steps": [],
+                "log_entries": [],
             }
 
         if row["step_id"] is None:
@@ -76,6 +94,37 @@ def _group_missions(rows: list[dict] | None) -> list[dict]:
     return list(grouped.values())
 
 
+async def _attach_log_entries(user_id: int, missions: list[dict]) -> None:
+    if not missions:
+        return
+
+    mission_ids = [mission["id"] for mission in missions]
+    logs = await _list_log_entries_by_mission_ids(user_id, mission_ids)
+    by_mission: dict[int, list[dict]] = {}
+
+    for entry in logs:
+        by_mission.setdefault(entry["mission_id"], []).append(entry)
+
+    for mission in missions:
+        mission["log_entries"] = by_mission.get(mission["id"], [])
+
+
+async def _list_log_entries_by_mission_ids(user_id: int, mission_ids: list[int]) -> list[dict]:
+    if not mission_ids:
+        return []
+
+    query = f"""
+        select {MISSION_LOG_ENTRY_COLUMNS}
+        from mission_log_entries l
+        join missions m on m.id = l.mission_id
+        where m.user_id = $1
+          and l.mission_id = any($2::bigint[])
+        order by coalesce(l.happened_at, l.created_at) desc, l.created_at desc, l.id desc
+    """
+    rows = await db.execute(query, user_id, mission_ids)
+    return rows or []
+
+
 async def list_missions(user_id: int) -> list[dict]:
     query = f"""
         select
@@ -87,7 +136,9 @@ async def list_missions(user_id: int) -> list[dict]:
         order by m.position asc, m.created_at asc, s.position asc, s.created_at asc
     """
     rows = await db.execute(query, user_id)
-    return _group_missions(rows)
+    missions = _group_missions(rows)
+    await _attach_log_entries(user_id, missions)
+    return missions
 
 
 async def create_mission(
@@ -256,4 +307,144 @@ async def delete_mission_step(step_id: int, user_id: int) -> bool:
         returning s.id
     """
     rows = await db.execute(query, step_id, user_id)
+    return bool(rows)
+
+
+async def list_mission_log_entries(mission_id: int, user_id: int) -> list[dict] | None:
+    query = f"""
+        select {MISSION_LOG_ENTRY_COLUMNS}
+        from mission_log_entries l
+        join missions m on m.id = l.mission_id
+        where l.mission_id = $1
+          and m.user_id = $2
+        order by coalesce(l.happened_at, l.created_at) desc, l.created_at desc, l.id desc
+    """
+    rows = await db.execute(query, mission_id, user_id)
+    if rows is None:
+        mission_rows = await db.execute("select id from missions where id = $1 and user_id = $2", mission_id, user_id)
+        if not mission_rows:
+            return None
+        return []
+    return rows
+
+
+async def create_mission_log_entry(
+    mission_id: int,
+    user_id: int,
+    author_id: int,
+    text: str,
+    entry_type: str,
+    importance: str,
+    tags: list[str],
+    happened_at: datetime | None,
+    source: str,
+) -> dict | None:
+    query = f"""
+        with target_mission as (
+            select id
+            from missions
+            where id = $1
+              and user_id = $2
+        ),
+        inserted as (
+            insert into mission_log_entries (
+                mission_id,
+                author_id,
+                text,
+                entry_type,
+                importance,
+                tags,
+                happened_at,
+                source
+            )
+            select
+                target_mission.id,
+                $3,
+                $4,
+                $5,
+                $6,
+                $7::text[],
+                $8,
+                $9
+            from target_mission
+            returning
+                id,
+                mission_id,
+                author_id,
+                text,
+                entry_type,
+                importance,
+                tags,
+                happened_at,
+                source,
+                created_at,
+                updated_at
+        )
+        select * from inserted
+    """
+    rows = await db.execute(query, mission_id, user_id, author_id, text, entry_type, importance, tags, happened_at, source)
+    if not rows:
+        return None
+    return rows[0]
+
+
+async def update_mission_log_entry(
+    entry_id: int,
+    user_id: int,
+    text: str,
+    entry_type: str,
+    importance: str,
+    tags: list[str],
+    happened_at: datetime | None,
+) -> dict | None:
+    query = f"""
+        with target as (
+            select l.id
+            from mission_log_entries l
+            join missions m on m.id = l.mission_id
+            where l.id = $1
+              and m.user_id = $2
+        ),
+        updated as (
+            update mission_log_entries l
+            set
+                text = $3,
+                entry_type = $4,
+                importance = $5,
+                tags = $6::text[],
+                happened_at = $7,
+                updated_at = now()
+            from target
+            where l.id = target.id
+            returning
+                l.id,
+                l.mission_id,
+                l.author_id,
+                l.text,
+                l.entry_type,
+                l.importance,
+                l.tags,
+                l.happened_at,
+                l.source,
+                l.created_at,
+                l.updated_at
+        )
+        select * from updated
+    """
+    rows = await db.execute(query, entry_id, user_id, text, entry_type, importance, tags, happened_at)
+    if not rows:
+        return None
+    return rows[0]
+
+
+async def delete_mission_log_entry(entry_id: int, user_id: int) -> bool:
+    query = """
+        delete from mission_log_entries l
+        using missions m
+        where l.id = $1
+          and m.id = l.mission_id
+          and m.user_id = $2
+        returning l.id
+    """
+    rows = await db.execute(query, entry_id, user_id)
     return bool(rows)

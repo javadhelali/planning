@@ -22,7 +22,7 @@ import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { del, get, post, put } from "../../utilities/api";
+import { del, get, hasPlanningSession, post, put } from "../../utilities/api";
 import { ActionMenu, ActionMenuItem } from "@/components/site/action-menu";
 import MetaItem from "@/components/site/meta-item";
 import Modal from "@/components/site/modal";
@@ -120,7 +120,6 @@ const MATRIX_QUADRANTS: Array<{
   },
 ];
 
-const SESSION_COOKIE_KEY = "planning_session";
 const EMPTY_JALALI_DATE: JalaliDateParts = { year: "", month: "", day: "" };
 const CARD_ACTIONS_VISIBILITY_CLASS =
   "md:invisible md:opacity-0 md:pointer-events-none md:transition-opacity md:group-hover:visible md:group-hover:opacity-100 md:group-hover:pointer-events-auto";
@@ -175,13 +174,6 @@ function toGregorianDateString(value: JalaliDateParts) {
 function formatTaskStatus(status: TaskStatus) {
   if (status === "done") return "Done";
   return "To do";
-}
-
-function hasSessionCookie() {
-  return document.cookie
-    .split(";")
-    .map((part) => part.trim())
-    .some((part) => part.startsWith(`${SESSION_COOKIE_KEY}=`));
 }
 
 function isDoneTask(task: Task) {
@@ -465,7 +457,7 @@ export default function HomePage() {
   }, [pushToast]);
 
   useEffect(() => {
-    setAuthState(hasSessionCookie() ? "authenticated" : "guest");
+    setAuthState(hasPlanningSession() ? "authenticated" : "guest");
   }, []);
 
   useEffect(() => {

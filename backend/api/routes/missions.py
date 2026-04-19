@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -6,15 +7,23 @@ from pydantic import BaseModel, Field
 from api.dependencies.auth import require_authenticated_user
 from repositories.missions import (
     create_mission,
+    create_mission_log_entry,
     create_mission_step,
+    delete_mission_log_entry,
     delete_mission,
     delete_mission_step,
+    list_mission_log_entries,
     list_missions,
+    update_mission_log_entry,
     update_mission,
     update_mission_step,
 )
 
 router = APIRouter(prefix="/planning", tags=["missions"])
+
+MissionLogEntryType = Literal["observation", "event", "decision", "hypothesis", "risk", "lesson"]
+MissionLogImportance = Literal["low", "medium", "high"]
+MissionLogSource = Literal["manual", "imported", "ai_generated"]
 
 
 class MissionStepResponse(BaseModel):
@@ -23,6 +32,20 @@ class MissionStepResponse(BaseModel):
     description: str | None
     is_next: bool
     position: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class MissionLogEntryResponse(BaseModel):
+    id: int
+    mission_id: int
+    author_id: int
+    text: str
+    entry_type: MissionLogEntryType
+    importance: MissionLogImportance
+    tags: list[str]
+    happened_at: datetime | None
+    source: MissionLogSource
     created_at: datetime
     updated_at: datetime
 
@@ -36,6 +59,7 @@ class MissionResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     steps: list[MissionStepResponse]
+    log_entries: list[MissionLogEntryResponse]
 
 
 class MissionCreateRequest(BaseModel):
@@ -62,6 +86,23 @@ class MissionStepUpdateRequest(BaseModel):
     position: int = Field(ge=1)
 
 
+class MissionLogEntryCreateRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+    entry_type: MissionLogEntryType = "observation"
+    importance: MissionLogImportance = "medium"
+    tags: list[str] = Field(default_factory=list)
+    happened_at: datetime | None = None
+    source: MissionLogSource = "manual"
+
+
+class MissionLogEntryUpdateRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+    entry_type: MissionLogEntryType = "observation"
+    importance: MissionLogImportance = "medium"
+    tags: list[str] = Field(default_factory=list)
+    happened_at: datetime | None = None
+
+
 class DeleteResponse(BaseModel):
     deleted: bool
 
@@ -76,6 +117,27 @@ def normalized_optional_text(value: str | None) -> str | None:
 
     cleaned = value.strip()
     return cleaned if cleaned else None
+
+
+def normalized_tags(tags: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+
+    for raw_tag in tags:
+        cleaned = raw_tag.strip().lower()
+        if not cleaned:
+            continue
+        if len(cleaned) > 40:
+            raise HTTPException(status_code=400, detail="Each tag must be 40 characters or less.")
+        if cleaned in seen:
+            continue
+        seen.add(cleaned)
+        deduped.append(cleaned)
+
+    if len(deduped) > 20:
+        raise HTTPException(status_code=400, detail="At most 20 tags are allowed.")
+
+    return deduped
 
 
 @router.get("/missions", response_model=list[MissionResponse])
@@ -186,4 +248,70 @@ async def delete_mission_step_route(step_id: int, user: dict = Depends(require_a
     deleted = await delete_mission_step(step_id, user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Step not found")
+    return {"deleted": True}
+
+
+@router.get("/missions/{mission_id}/log-entries", response_model=list[MissionLogEntryResponse])
+async def get_mission_log_entries_route(mission_id: int, user: dict = Depends(require_authenticated_user)):
+    log_entries = await list_mission_log_entries(mission_id, user["id"])
+    if log_entries is None:
+        raise HTTPException(status_code=404, detail="Mission not found")
+    return log_entries
+
+
+@router.post("/missions/{mission_id}/log-entries", response_model=MissionLogEntryResponse, status_code=status.HTTP_201_CREATED)
+async def create_mission_log_entry_route(
+    mission_id: int,
+    payload: MissionLogEntryCreateRequest,
+    user: dict = Depends(require_authenticated_user),
+):
+    text = normalized_text(payload.text)
+    if not text:
+        raise HTTPException(status_code=400, detail="Mission log entry text is required.")
+
+    log_entry = await create_mission_log_entry(
+        mission_id=mission_id,
+        user_id=user["id"],
+        author_id=user["id"],
+        text=text,
+        entry_type=payload.entry_type,
+        importance=payload.importance,
+        tags=normalized_tags(payload.tags),
+        happened_at=payload.happened_at,
+        source=payload.source,
+    )
+    if log_entry is None:
+        raise HTTPException(status_code=404, detail="Mission not found")
+    return log_entry
+
+
+@router.put("/mission-log-entries/{entry_id}", response_model=MissionLogEntryResponse)
+async def update_mission_log_entry_route(
+    entry_id: int,
+    payload: MissionLogEntryUpdateRequest,
+    user: dict = Depends(require_authenticated_user),
+):
+    text = normalized_text(payload.text)
+    if not text:
+        raise HTTPException(status_code=400, detail="Mission log entry text is required.")
+
+    log_entry = await update_mission_log_entry(
+        entry_id=entry_id,
+        user_id=user["id"],
+        text=text,
+        entry_type=payload.entry_type,
+        importance=payload.importance,
+        tags=normalized_tags(payload.tags),
+        happened_at=payload.happened_at,
+    )
+    if log_entry is None:
+        raise HTTPException(status_code=404, detail="Mission log entry not found")
+    return log_entry
+
+
+@router.delete("/mission-log-entries/{entry_id}", response_model=DeleteResponse)
+async def delete_mission_log_entry_route(entry_id: int, user: dict = Depends(require_authenticated_user)):
+    deleted = await delete_mission_log_entry(entry_id, user["id"])
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Mission log entry not found")
     return {"deleted": True}
