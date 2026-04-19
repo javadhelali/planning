@@ -5,10 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from api.dependencies.auth import require_authenticated_user
+from core.activity_events import record_activity_event
 from repositories.tasks import (
     clear_completed_tasks,
     create_task,
     delete_task,
+    get_task,
     get_focused_task,
     list_tasks,
     update_task,
@@ -106,12 +108,37 @@ async def create_task_route(
     )
     if task is None:
         raise HTTPException(status_code=500, detail="Failed to create task")
+    await record_activity_event(
+        user_id=user["id"],
+        source="tasks",
+        text=f'Created task "{task["title"]}".',
+        metadata={
+            "event": "task_created",
+            "task_id": task["id"],
+            "status": task["status"],
+            "is_focused": task["is_focused"],
+            "is_important": task["is_important"],
+            "is_urgent": task["is_urgent"],
+            "due_date": task["due_date"].isoformat() if task["due_date"] else None,
+        },
+        occurred_at=task["created_at"],
+    )
     return task
 
 
 @router.delete("/tasks/completed", response_model=ClearCompletedResponse)
 async def clear_completed_tasks_route(user: dict = Depends(require_authenticated_user)):
     deleted_count = await clear_completed_tasks(user["id"])
+    if deleted_count > 0:
+        await record_activity_event(
+            user_id=user["id"],
+            source="tasks",
+            text=f"Cleared {deleted_count} completed task(s).",
+            metadata={
+                "event": "tasks_cleared_completed",
+                "deleted_count": deleted_count,
+            },
+        )
     return {"deleted_count": deleted_count}
 
 
@@ -135,12 +162,44 @@ async def update_task_route(
     )
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
+    text = f'Updated task "{task["title"]}".'
+    if task["status"] == "done":
+        text = f'Marked task "{task["title"]}" as done.'
+    await record_activity_event(
+        user_id=user["id"],
+        source="tasks",
+        text=text,
+        metadata={
+            "event": "task_updated",
+            "task_id": task["id"],
+            "status": task["status"],
+            "is_focused": task["is_focused"],
+            "is_important": task["is_important"],
+            "is_urgent": task["is_urgent"],
+            "due_date": task["due_date"].isoformat() if task["due_date"] else None,
+        },
+        occurred_at=task["updated_at"],
+    )
     return task
 
 
 @router.delete("/tasks/{task_id}", response_model=DeleteTaskResponse)
 async def delete_task_route(task_id: int, user: dict = Depends(require_authenticated_user)):
+    existing_task = await get_task(task_id, user["id"])
+    if existing_task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
     deleted = await delete_task(task_id, user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Task not found")
+    await record_activity_event(
+        user_id=user["id"],
+        source="tasks",
+        text=f'Deleted task "{existing_task["title"]}".',
+        metadata={
+            "event": "task_deleted",
+            "task_id": existing_task["id"],
+            "status": existing_task["status"],
+        },
+    )
     return {"deleted": True}

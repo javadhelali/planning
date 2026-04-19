@@ -82,6 +82,7 @@ type PendingConfirmation =
   | null;
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const KEY_RESULT_ADJUST_DEBOUNCE_MS = 1500;
 const EMPTY_JALALI_DATE: JalaliDateParts = { year: "", month: "", day: "" };
 const OBJECTIVE_CARD_ACTIONS_VISIBILITY_CLASS =
   "md:invisible md:opacity-0 md:pointer-events-none md:transition-opacity md:group-hover/objective:visible md:group-hover/objective:opacity-100 md:group-hover/objective:pointer-events-auto";
@@ -688,9 +689,14 @@ export default function OkrsPage() {
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation>(null);
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
   const [busyActionKey, setBusyActionKey] = useState<string | null>(null);
+  const [adjustingKeyResultIds, setAdjustingKeyResultIds] = useState<number[]>([]);
+  const [submittingKeyResultIds, setSubmittingKeyResultIds] = useState<number[]>([]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isExportingActiveOkrs, setIsExportingActiveOkrs] = useState(false);
   const toastTimeoutsRef = useRef<number[]>([]);
+  const keyResultAdjustTimersRef = useRef<Record<number, number>>({});
+  const keyResultAdjustQueueRef = useRef<Record<number, number>>({});
+  const keyResultAdjustInFlightRef = useRef<Set<number>>(new Set());
 
   const dismissToast = useCallback((id: number) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
@@ -715,6 +721,8 @@ export default function OkrsPage() {
     return () => {
       toastTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
       toastTimeoutsRef.current = [];
+      Object.values(keyResultAdjustTimersRef.current).forEach((timeoutId) => window.clearTimeout(timeoutId));
+      keyResultAdjustTimersRef.current = {};
     };
   }, []);
 
@@ -935,24 +943,88 @@ export default function OkrsPage() {
     }
   }
 
-  async function handleAdjustKeyResult(keyResult: KeyResult, direction: "increase" | "decrease") {
-    const delta = direction === "increase" ? keyResult.step_value : -keyResult.step_value;
-    setBusyActionKey(`adjust-${keyResult.id}-${direction}`);
-
-    try {
-      const response = await patch(`/planning/key-results/${keyResult.id}/adjust`, { delta });
-
-      if (!response.ok) {
-        throw new Error(await readErrorMessage(response));
+  const flushQueuedKeyResultAdjust = useCallback(
+    async (keyResultId: number) => {
+      if (keyResultAdjustTimersRef.current[keyResultId]) {
+        window.clearTimeout(keyResultAdjustTimersRef.current[keyResultId]);
+        delete keyResultAdjustTimersRef.current[keyResultId];
       }
 
-      const updatedObjective = (await response.json()) as Okr;
-      syncObjective(updatedObjective);
-    } catch (error) {
-      pushToast("error", error instanceof Error ? error.message : "Failed to update key result");
-    } finally {
-      setBusyActionKey(null);
+      if (keyResultAdjustInFlightRef.current.has(keyResultId)) {
+        return;
+      }
+
+      const queuedDelta = keyResultAdjustQueueRef.current[keyResultId] ?? 0;
+      if (!queuedDelta) {
+        setAdjustingKeyResultIds((current) => current.filter((id) => id !== keyResultId));
+        return;
+      }
+
+      keyResultAdjustInFlightRef.current.add(keyResultId);
+      setSubmittingKeyResultIds((current) => (current.includes(keyResultId) ? current : [...current, keyResultId]));
+      delete keyResultAdjustQueueRef.current[keyResultId];
+
+      try {
+        const response = await patch(`/planning/key-results/${keyResultId}/adjust`, { delta: queuedDelta });
+
+        if (!response.ok) {
+          throw new Error(await readErrorMessage(response));
+        }
+
+        const updatedObjective = (await response.json()) as Okr;
+        syncObjective(updatedObjective);
+      } catch (error) {
+        pushToast("error", error instanceof Error ? error.message : "Failed to update key result");
+        await loadOkrs();
+      } finally {
+        keyResultAdjustInFlightRef.current.delete(keyResultId);
+        setSubmittingKeyResultIds((current) => current.filter((id) => id !== keyResultId));
+
+        const nextQueuedDelta = keyResultAdjustQueueRef.current[keyResultId] ?? 0;
+        if (nextQueuedDelta) {
+          const timeoutId = window.setTimeout(() => {
+            void flushQueuedKeyResultAdjust(keyResultId);
+          }, KEY_RESULT_ADJUST_DEBOUNCE_MS);
+          keyResultAdjustTimersRef.current[keyResultId] = timeoutId;
+        } else {
+          setAdjustingKeyResultIds((current) => current.filter((id) => id !== keyResultId));
+        }
+      }
+    },
+    [loadOkrs, pushToast, syncObjective],
+  );
+
+  async function handleAdjustKeyResult(keyResult: KeyResult, direction: "increase" | "decrease") {
+    if (keyResultAdjustInFlightRef.current.has(keyResult.id)) {
+      return;
     }
+
+    const delta = direction === "increase" ? keyResult.step_value : -keyResult.step_value;
+
+    setOkrs((current) =>
+      current.map((okr) => ({
+        ...okr,
+        key_results: okr.key_results.map((item) =>
+          item.id === keyResult.id
+            ? {
+                ...item,
+                current_value: Math.max(0, item.current_value + delta),
+              }
+            : item,
+        ),
+      })),
+    );
+
+    keyResultAdjustQueueRef.current[keyResult.id] = (keyResultAdjustQueueRef.current[keyResult.id] ?? 0) + delta;
+    setAdjustingKeyResultIds((current) => (current.includes(keyResult.id) ? current : [...current, keyResult.id]));
+
+    if (keyResultAdjustTimersRef.current[keyResult.id]) {
+      window.clearTimeout(keyResultAdjustTimersRef.current[keyResult.id]);
+    }
+
+    keyResultAdjustTimersRef.current[keyResult.id] = window.setTimeout(() => {
+      void flushQueuedKeyResultAdjust(keyResult.id);
+    }, KEY_RESULT_ADJUST_DEBOUNCE_MS);
   }
 
   async function handleArchiveToggle(objective: Okr) {
@@ -1299,8 +1371,8 @@ export default function OkrsPage() {
                         const actualProgress = keyResultProgressPercent(keyResult);
                         const expectedValue = okr.is_archived ? null : timelineRatio(okr, today) * 100;
                         const expectedMetricValue = okr.is_archived ? null : keyResultExpectedValue(okr, keyResult, today);
-                        const adjustDownKey = `adjust-${keyResult.id}-decrease`;
-                        const adjustUpKey = `adjust-${keyResult.id}-increase`;
+                        const isAdjustingKeyResult = adjustingKeyResultIds.includes(keyResult.id);
+                        const isSubmittingKeyResult = submittingKeyResultIds.includes(keyResult.id);
                         const keyResultMenuKey = `key-result-${keyResult.id}`;
 
                         return (
@@ -1345,11 +1417,11 @@ export default function OkrsPage() {
                                     type="button"
                                     aria-label="Decrease current value"
                                     title="Decrease current value"
-                                    disabled={busyActionKey === adjustDownKey}
+                                    disabled={isSubmittingKeyResult}
                                     onClick={() => void handleAdjustKeyResult(keyResult, "decrease")}
-                                    className="button-secondary inline-flex h-9 w-9 items-center justify-center rounded-full disabled:opacity-60"
+                                    className="button-secondary inline-flex h-9 w-9 items-center justify-center rounded-full"
                                   >
-                                    {busyActionKey === adjustDownKey ? (
+                                    {isAdjustingKeyResult ? (
                                       <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
                                     ) : (
                                       <Minus className="h-4 w-4" aria-hidden="true" />
@@ -1359,11 +1431,11 @@ export default function OkrsPage() {
                                     type="button"
                                     aria-label="Increase current value"
                                     title="Increase current value"
-                                    disabled={busyActionKey === adjustUpKey}
+                                    disabled={isSubmittingKeyResult}
                                     onClick={() => void handleAdjustKeyResult(keyResult, "increase")}
-                                    className="button-secondary inline-flex h-9 w-9 items-center justify-center rounded-full disabled:opacity-60"
+                                    className="button-secondary inline-flex h-9 w-9 items-center justify-center rounded-full"
                                   >
-                                    {busyActionKey === adjustUpKey ? (
+                                    {isAdjustingKeyResult ? (
                                       <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
                                     ) : (
                                       <Plus className="h-4 w-4" aria-hidden="true" />
@@ -1379,8 +1451,8 @@ export default function OkrsPage() {
                                     value={keyResult.current_value}
                                     step={keyResult.step_value}
                                     unit={keyResult.unit}
-                                    isIncreaseBusy={busyActionKey === adjustUpKey}
-                                    isDecreaseBusy={busyActionKey === adjustDownKey}
+                                    isIncreaseBusy={isSubmittingKeyResult}
+                                    isDecreaseBusy={isSubmittingKeyResult}
                                     onIncrease={() => void handleAdjustKeyResult(keyResult, "increase")}
                                     onDecrease={() => void handleAdjustKeyResult(keyResult, "decrease")}
                                   />

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, ValidationError
 
 from api.dependencies.auth import require_authenticated_user
+from core.activity_events import record_activity_event
 from config import settings
 from external.openrouter import OpenRouterClient, openrouter_client
 from repositories.glossary import (
@@ -14,6 +15,8 @@ from repositories.glossary import (
     create_glossary_term,
     delete_glossary_label,
     delete_glossary_term,
+    get_glossary_label,
+    get_glossary_term,
     list_glossary_labels_by_ids,
     list_glossary_labels,
     list_glossary_terms,
@@ -354,6 +357,17 @@ async def create_label_route(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if label is None:
         raise HTTPException(status_code=500, detail="Failed to create label.")
+    await record_activity_event(
+        user_id=user["id"],
+        source="glossary",
+        text=f'Added glossary label "{label["name"]}".',
+        metadata={
+            "event": "glossary_label_created",
+            "label_id": label["id"],
+            "color": label["color"],
+        },
+        occurred_at=label["created_at"],
+    )
     return label
 
 
@@ -374,14 +388,39 @@ async def update_label_route(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if label is None:
         raise HTTPException(status_code=404, detail="Label not found.")
+    await record_activity_event(
+        user_id=user["id"],
+        source="glossary",
+        text=f'Updated glossary label "{label["name"]}".',
+        metadata={
+            "event": "glossary_label_updated",
+            "label_id": label["id"],
+            "color": label["color"],
+        },
+        occurred_at=label["updated_at"],
+    )
     return label
 
 
 @router.delete("/glossary/labels/{label_id}", response_model=DeleteResponse)
 async def delete_label_route(label_id: int, user: dict = Depends(require_authenticated_user)):
+    label = await get_glossary_label(user["id"], label_id)
+    if label is None:
+        raise HTTPException(status_code=404, detail="Label not found.")
+
     deleted = await delete_glossary_label(user["id"], label_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Label not found.")
+    await record_activity_event(
+        user_id=user["id"],
+        source="glossary",
+        text=f'Deleted glossary label "{label["name"]}".',
+        metadata={
+            "event": "glossary_label_deleted",
+            "label_id": label["id"],
+            "color": label["color"],
+        },
+    )
     return {"deleted": True}
 
 
@@ -429,6 +468,17 @@ async def create_term_route(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if glossary_term is None:
         raise HTTPException(status_code=500, detail="Failed to create term.")
+    await record_activity_event(
+        user_id=user["id"],
+        source="glossary",
+        text=f'Added glossary term "{glossary_term["term"]}".',
+        metadata={
+            "event": "glossary_term_created",
+            "term_id": glossary_term["id"],
+            "label_ids": [label["id"] for label in glossary_term["labels"]],
+        },
+        occurred_at=glossary_term["created_at"],
+    )
     return glossary_term
 
 
@@ -610,12 +660,36 @@ async def update_term_route(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if glossary_term is None:
         raise HTTPException(status_code=404, detail="Term not found.")
+    await record_activity_event(
+        user_id=user["id"],
+        source="glossary",
+        text=f'Updated glossary term "{glossary_term["term"]}".',
+        metadata={
+            "event": "glossary_term_updated",
+            "term_id": glossary_term["id"],
+            "label_ids": [label["id"] for label in glossary_term["labels"]],
+        },
+        occurred_at=glossary_term["updated_at"],
+    )
     return glossary_term
 
 
 @router.delete("/glossary/terms/{term_id}", response_model=DeleteResponse)
 async def delete_term_route(term_id: int, user: dict = Depends(require_authenticated_user)):
+    glossary_term = await get_glossary_term(user["id"], term_id)
+    if glossary_term is None:
+        raise HTTPException(status_code=404, detail="Term not found.")
+
     deleted = await delete_glossary_term(user["id"], term_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Term not found.")
+    await record_activity_event(
+        user_id=user["id"],
+        source="glossary",
+        text=f'Deleted glossary term "{glossary_term["term"]}".',
+        metadata={
+            "event": "glossary_term_deleted",
+            "term_id": glossary_term["id"],
+        },
+    )
     return {"deleted": True}

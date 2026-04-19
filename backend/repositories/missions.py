@@ -141,6 +141,10 @@ async def list_missions(user_id: int) -> list[dict]:
     return missions
 
 
+async def get_mission(user_id: int, mission_id: int) -> dict | None:
+    return await _get_mission(user_id, mission_id)
+
+
 async def create_mission(
     user_id: int,
     title: str,
@@ -194,6 +198,28 @@ async def delete_mission(mission_id: int, user_id: int) -> bool:
     query = "delete from missions where id = $1 and user_id = $2 returning id"
     rows = await db.execute(query, mission_id, user_id)
     return bool(rows)
+
+
+async def get_mission_step(step_id: int, user_id: int) -> dict | None:
+    query = """
+        select
+            s.id,
+            s.mission_id,
+            s.title,
+            s.description,
+            s.is_next,
+            s.position,
+            s.created_at,
+            s.updated_at
+        from mission_steps s
+        join missions m on m.id = s.mission_id
+        where s.id = $1
+          and m.user_id = $2
+    """
+    rows = await db.execute(query, step_id, user_id)
+    if not rows:
+        return None
+    return rows[0]
 
 
 async def create_mission_step(
@@ -326,6 +352,20 @@ async def list_mission_log_entries(mission_id: int, user_id: int) -> list[dict] 
             return None
         return []
     return rows
+
+
+async def get_mission_log_entry(entry_id: int, user_id: int) -> dict | None:
+    query = f"""
+        select {MISSION_LOG_ENTRY_COLUMNS}
+        from mission_log_entries l
+        join missions m on m.id = l.mission_id
+        where l.id = $1
+          and m.user_id = $2
+    """
+    rows = await db.execute(query, entry_id, user_id)
+    if not rows:
+        return None
+    return rows[0]
 
 
 async def create_mission_log_entry(

@@ -31,6 +31,19 @@ async def list_tasks(user_id: int, status: str | None = None) -> list[dict]:
     return rows or []
 
 
+async def get_task(task_id: int, user_id: int) -> dict | None:
+    query = f"""
+        select {TASK_COLUMNS}
+        from tasks
+        where id = $1
+          and user_id = $2
+    """
+    rows = await db.execute(query, task_id, user_id)
+    if not rows:
+        return None
+    return rows[0]
+
+
 async def get_focused_task(user_id: int) -> dict | None:
     query = f"""
         select {TASK_COLUMNS}

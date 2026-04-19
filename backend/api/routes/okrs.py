@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, model_validator
 
 from api.dependencies.auth import require_authenticated_user
+from core.activity_events import record_activity_event
 from repositories.okrs import (
     adjust_key_result,
     archive_okr,
@@ -11,6 +12,8 @@ from repositories.okrs import (
     create_okr,
     delete_key_result,
     delete_okr,
+    get_key_result_context,
+    get_okr,
     list_okrs,
     restore_okr,
     update_key_result,
@@ -117,6 +120,18 @@ async def create_okr_route(
     )
     if okr is None:
         raise HTTPException(status_code=500, detail="Failed to create objective")
+    await record_activity_event(
+        user_id=user["id"],
+        source="okrs",
+        text=f'Created OKR "{okr["title"]}".',
+        metadata={
+            "event": "okr_created",
+            "okr_id": okr["id"],
+            "start_date": okr["start_date"].isoformat(),
+            "end_date": okr["end_date"].isoformat(),
+        },
+        occurred_at=okr["created_at"],
+    )
     return okr
 
 
@@ -136,6 +151,18 @@ async def update_okr_route(
     )
     if okr is None:
         raise HTTPException(status_code=404, detail="Objective not found")
+    await record_activity_event(
+        user_id=user["id"],
+        source="okrs",
+        text=f'Updated OKR "{okr["title"]}".',
+        metadata={
+            "event": "okr_updated",
+            "okr_id": okr["id"],
+            "start_date": okr["start_date"].isoformat(),
+            "end_date": okr["end_date"].isoformat(),
+        },
+        occurred_at=okr["updated_at"],
+    )
     return okr
 
 
@@ -144,6 +171,16 @@ async def archive_okr_route(okr_id: int, user: dict = Depends(require_authentica
     okr = await archive_okr(okr_id, user["id"])
     if okr is None:
         raise HTTPException(status_code=404, detail="Objective not found")
+    await record_activity_event(
+        user_id=user["id"],
+        source="okrs",
+        text=f'Archived OKR "{okr["title"]}".',
+        metadata={
+            "event": "okr_archived",
+            "okr_id": okr["id"],
+        },
+        occurred_at=okr["archived_at"] or okr["updated_at"],
+    )
     return okr
 
 
@@ -152,14 +189,37 @@ async def restore_okr_route(okr_id: int, user: dict = Depends(require_authentica
     okr = await restore_okr(okr_id, user["id"])
     if okr is None:
         raise HTTPException(status_code=404, detail="Objective not found")
+    await record_activity_event(
+        user_id=user["id"],
+        source="okrs",
+        text=f'Restored OKR "{okr["title"]}".',
+        metadata={
+            "event": "okr_restored",
+            "okr_id": okr["id"],
+        },
+        occurred_at=okr["updated_at"],
+    )
     return okr
 
 
 @router.delete("/okrs/{okr_id}", response_model=DeleteResponse)
 async def delete_okr_route(okr_id: int, user: dict = Depends(require_authenticated_user)):
+    okr = await get_okr(user["id"], okr_id)
+    if okr is None:
+        raise HTTPException(status_code=404, detail="Objective not found")
+
     deleted = await delete_okr(okr_id, user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Objective not found")
+    await record_activity_event(
+        user_id=user["id"],
+        source="okrs",
+        text=f'Deleted OKR "{okr["title"]}".',
+        metadata={
+            "event": "okr_deleted",
+            "okr_id": okr["id"],
+        },
+    )
     return {"deleted": True}
 
 
@@ -181,6 +241,21 @@ async def create_key_result_route(
     )
     if okr is None:
         raise HTTPException(status_code=404, detail="Objective not found")
+    await record_activity_event(
+        user_id=user["id"],
+        source="okrs",
+        text=f'Added KR "{payload.title}" to OKR "{okr["title"]}".',
+        metadata={
+            "event": "okr_key_result_created",
+            "okr_id": okr["id"],
+            "key_result_title": payload.title,
+            "start_value": payload.start_value,
+            "current_value": payload.current_value,
+            "target_value": payload.target_value,
+            "step_value": payload.step_value,
+            "unit": payload.unit,
+        },
+    )
     return okr
 
 
@@ -202,6 +277,22 @@ async def update_key_result_route(
     )
     if okr is None:
         raise HTTPException(status_code=404, detail="Key result not found")
+    await record_activity_event(
+        user_id=user["id"],
+        source="okrs",
+        text=f'Updated KR "{payload.title}" in OKR "{okr["title"]}".',
+        metadata={
+            "event": "okr_key_result_updated",
+            "okr_id": okr["id"],
+            "key_result_id": key_result_id,
+            "key_result_title": payload.title,
+            "start_value": payload.start_value,
+            "current_value": payload.current_value,
+            "target_value": payload.target_value,
+            "step_value": payload.step_value,
+            "unit": payload.unit,
+        },
+    )
     return okr
 
 
@@ -214,12 +305,44 @@ async def adjust_key_result_route(
     okr = await adjust_key_result(key_result_id, user["id"], payload.delta)
     if okr is None:
         raise HTTPException(status_code=404, detail="Key result not found")
+    adjusted_key_result = next((key_result for key_result in okr["key_results"] if key_result["id"] == key_result_id), None)
+    if adjusted_key_result is not None:
+        await record_activity_event(
+            user_id=user["id"],
+            source="okrs",
+            text=f'Updated KR "{adjusted_key_result["title"]}" in OKR "{okr["title"]}" to {adjusted_key_result["current_value"]}.',
+            metadata={
+                "event": "okr_key_result_adjusted",
+                "okr_id": okr["id"],
+                "key_result_id": key_result_id,
+                "key_result_title": adjusted_key_result["title"],
+                "delta": payload.delta,
+                "new_current_value": adjusted_key_result["current_value"],
+                "unit": adjusted_key_result["unit"],
+            },
+            occurred_at=adjusted_key_result["updated_at"],
+        )
     return okr
 
 
 @router.delete("/key-results/{key_result_id}", response_model=DeleteResponse)
 async def delete_key_result_route(key_result_id: int, user: dict = Depends(require_authenticated_user)):
+    key_result_context = await get_key_result_context(user["id"], key_result_id)
+    if key_result_context is None:
+        raise HTTPException(status_code=404, detail="Key result not found")
+
     deleted = await delete_key_result(key_result_id, user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Key result not found")
+    await record_activity_event(
+        user_id=user["id"],
+        source="okrs",
+        text=f'Deleted KR "{key_result_context["key_result_title"]}" from OKR "{key_result_context["okr_title"]}".',
+        metadata={
+            "event": "okr_key_result_deleted",
+            "okr_id": key_result_context["okr_id"],
+            "key_result_id": key_result_context["key_result_id"],
+            "key_result_title": key_result_context["key_result_title"],
+        },
+    )
     return {"deleted": True}

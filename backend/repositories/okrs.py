@@ -114,6 +114,27 @@ async def get_okr(user_id: int, okr_id: int) -> dict | None:
     return grouped[0]
 
 
+async def get_key_result_context(user_id: int, key_result_id: int) -> dict | None:
+    query = """
+        select
+            k.id as key_result_id,
+            k.okr_id,
+            k.title as key_result_title,
+            k.current_value as key_result_current_value,
+            k.target_value as key_result_target_value,
+            k.unit as key_result_unit,
+            o.title as okr_title
+        from okr_key_results k
+        join okrs o on o.id = k.okr_id
+        where k.id = $1
+          and o.user_id = $2
+    """
+    rows = await db.execute(query, key_result_id, user_id)
+    if not rows:
+        return None
+    return rows[0]
+
+
 async def create_okr(
     user_id: int,
     title: str,
