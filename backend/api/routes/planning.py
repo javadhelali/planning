@@ -148,6 +148,10 @@ async def update_task_route(
     payload: TaskUpdateRequest,
     user: dict = Depends(require_authenticated_user),
 ):
+    previous_task = await get_task(task_id, user["id"])
+    if previous_task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
     task = await update_task(
         task_id=task_id,
         user_id=user["id"],
@@ -162,18 +166,34 @@ async def update_task_route(
     )
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
+
+    event_key = "task_updated"
     text = f'Updated task "{task["title"]}".'
-    if task["status"] == "done":
+
+    if task["status"] == "done" and previous_task["status"] != "done":
+        event_key = "task_completed"
         text = f'Marked task "{task["title"]}" as done.'
+    elif task["status"] != "done" and previous_task["status"] == "done":
+        event_key = "task_reopened"
+        text = f'Reopened task "{task["title"]}".'
+    elif task["is_focused"] and not previous_task["is_focused"]:
+        event_key = "task_focused"
+        text = f'Focused on task "{task["title"]}".'
+    elif previous_task["is_focused"] and not task["is_focused"]:
+        event_key = "task_unfocused"
+        text = f'Removed focus from task "{task["title"]}".'
+
     await record_activity_event(
         user_id=user["id"],
         source="tasks",
         text=text,
         metadata={
-            "event": "task_updated",
+            "event": event_key,
             "task_id": task["id"],
             "status": task["status"],
+            "previous_status": previous_task["status"],
             "is_focused": task["is_focused"],
+            "previous_is_focused": previous_task["is_focused"],
             "is_important": task["is_important"],
             "is_urgent": task["is_urgent"],
             "due_date": task["due_date"].isoformat() if task["due_date"] else None,

@@ -120,8 +120,10 @@ async def get_key_result_context(user_id: int, key_result_id: int) -> dict | Non
             k.id as key_result_id,
             k.okr_id,
             k.title as key_result_title,
+            k.start_value as key_result_start_value,
             k.current_value as key_result_current_value,
             k.target_value as key_result_target_value,
+            k.step_value as key_result_step_value,
             k.unit as key_result_unit,
             o.title as okr_title
         from okr_key_results k

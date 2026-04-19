@@ -689,7 +689,6 @@ export default function OkrsPage() {
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation>(null);
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
   const [busyActionKey, setBusyActionKey] = useState<string | null>(null);
-  const [adjustingKeyResultIds, setAdjustingKeyResultIds] = useState<number[]>([]);
   const [submittingKeyResultIds, setSubmittingKeyResultIds] = useState<number[]>([]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isExportingActiveOkrs, setIsExportingActiveOkrs] = useState(false);
@@ -956,7 +955,6 @@ export default function OkrsPage() {
 
       const queuedDelta = keyResultAdjustQueueRef.current[keyResultId] ?? 0;
       if (!queuedDelta) {
-        setAdjustingKeyResultIds((current) => current.filter((id) => id !== keyResultId));
         return;
       }
 
@@ -986,8 +984,6 @@ export default function OkrsPage() {
             void flushQueuedKeyResultAdjust(keyResultId);
           }, KEY_RESULT_ADJUST_DEBOUNCE_MS);
           keyResultAdjustTimersRef.current[keyResultId] = timeoutId;
-        } else {
-          setAdjustingKeyResultIds((current) => current.filter((id) => id !== keyResultId));
         }
       }
     },
@@ -1016,7 +1012,6 @@ export default function OkrsPage() {
     );
 
     keyResultAdjustQueueRef.current[keyResult.id] = (keyResultAdjustQueueRef.current[keyResult.id] ?? 0) + delta;
-    setAdjustingKeyResultIds((current) => (current.includes(keyResult.id) ? current : [...current, keyResult.id]));
 
     if (keyResultAdjustTimersRef.current[keyResult.id]) {
       window.clearTimeout(keyResultAdjustTimersRef.current[keyResult.id]);
@@ -1371,7 +1366,6 @@ export default function OkrsPage() {
                         const actualProgress = keyResultProgressPercent(keyResult);
                         const expectedValue = okr.is_archived ? null : timelineRatio(okr, today) * 100;
                         const expectedMetricValue = okr.is_archived ? null : keyResultExpectedValue(okr, keyResult, today);
-                        const isAdjustingKeyResult = adjustingKeyResultIds.includes(keyResult.id);
                         const isSubmittingKeyResult = submittingKeyResultIds.includes(keyResult.id);
                         const keyResultMenuKey = `key-result-${keyResult.id}`;
 
@@ -1421,7 +1415,7 @@ export default function OkrsPage() {
                                     onClick={() => void handleAdjustKeyResult(keyResult, "decrease")}
                                     className="button-secondary inline-flex h-9 w-9 items-center justify-center rounded-full"
                                   >
-                                    {isAdjustingKeyResult ? (
+                                    {isSubmittingKeyResult ? (
                                       <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
                                     ) : (
                                       <Minus className="h-4 w-4" aria-hidden="true" />
@@ -1435,7 +1429,7 @@ export default function OkrsPage() {
                                     onClick={() => void handleAdjustKeyResult(keyResult, "increase")}
                                     className="button-secondary inline-flex h-9 w-9 items-center justify-center rounded-full"
                                   >
-                                    {isAdjustingKeyResult ? (
+                                    {isSubmittingKeyResult ? (
                                       <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
                                     ) : (
                                       <Plus className="h-4 w-4" aria-hidden="true" />

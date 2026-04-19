@@ -265,6 +265,10 @@ async def update_key_result_route(
     payload: KeyResultUpdateRequest,
     user: dict = Depends(require_authenticated_user),
 ):
+    previous_key_result = await get_key_result_context(user["id"], key_result_id)
+    if previous_key_result is None:
+        raise HTTPException(status_code=404, detail="Key result not found")
+
     okr = await update_key_result(
         key_result_id=key_result_id,
         user_id=user["id"],
@@ -277,21 +281,42 @@ async def update_key_result_route(
     )
     if okr is None:
         raise HTTPException(status_code=404, detail="Key result not found")
+
+    updated_key_result = next((key_result for key_result in okr["key_results"] if key_result["id"] == key_result_id), None)
+    previous_current_value = float(previous_key_result["key_result_current_value"] or 0)
+    new_current_value = updated_key_result["current_value"] if updated_key_result is not None else payload.current_value
+
+    key_result_title = payload.title
+    key_result_unit = payload.unit
+    if updated_key_result is not None:
+        key_result_title = updated_key_result["title"]
+        key_result_unit = updated_key_result["unit"]
+
+    unit_suffix = f' {key_result_unit}' if key_result_unit else ""
+
     await record_activity_event(
         user_id=user["id"],
         source="okrs",
-        text=f'Updated KR "{payload.title}" in OKR "{okr["title"]}".',
+        text=f'Updated KR "{key_result_title}" in OKR "{okr["title"]}" from {previous_current_value} to {new_current_value}{unit_suffix}.',
         metadata={
             "event": "okr_key_result_updated",
             "okr_id": okr["id"],
             "key_result_id": key_result_id,
-            "key_result_title": payload.title,
-            "start_value": payload.start_value,
-            "current_value": payload.current_value,
-            "target_value": payload.target_value,
-            "step_value": payload.step_value,
-            "unit": payload.unit,
+            "key_result_title": key_result_title,
+            "previous_title": previous_key_result["key_result_title"],
+            "new_title": key_result_title,
+            "previous_start_value": float(previous_key_result["key_result_start_value"] or 0),
+            "new_start_value": payload.start_value,
+            "previous_current_value": previous_current_value,
+            "new_current_value": new_current_value,
+            "previous_target_value": float(previous_key_result["key_result_target_value"] or 0),
+            "new_target_value": payload.target_value,
+            "previous_step_value": float(previous_key_result["key_result_step_value"] or 0),
+            "new_step_value": payload.step_value,
+            "previous_unit": previous_key_result["key_result_unit"],
+            "new_unit": key_result_unit,
         },
+        occurred_at=updated_key_result["updated_at"] if updated_key_result is not None else None,
     )
     return okr
 
@@ -302,22 +327,31 @@ async def adjust_key_result_route(
     payload: KeyResultAdjustRequest,
     user: dict = Depends(require_authenticated_user),
 ):
+    previous_key_result = await get_key_result_context(user["id"], key_result_id)
+    if previous_key_result is None:
+        raise HTTPException(status_code=404, detail="Key result not found")
+
     okr = await adjust_key_result(key_result_id, user["id"], payload.delta)
     if okr is None:
         raise HTTPException(status_code=404, detail="Key result not found")
     adjusted_key_result = next((key_result for key_result in okr["key_results"] if key_result["id"] == key_result_id), None)
     if adjusted_key_result is not None:
+        previous_current_value = float(previous_key_result["key_result_current_value"] or 0)
+        new_current_value = adjusted_key_result["current_value"]
+        unit_suffix = f' {adjusted_key_result["unit"]}' if adjusted_key_result["unit"] else ""
+
         await record_activity_event(
             user_id=user["id"],
             source="okrs",
-            text=f'Updated KR "{adjusted_key_result["title"]}" in OKR "{okr["title"]}" to {adjusted_key_result["current_value"]}.',
+            text=f'Updated KR "{adjusted_key_result["title"]}" in OKR "{okr["title"]}" from {previous_current_value} to {new_current_value}{unit_suffix}.',
             metadata={
                 "event": "okr_key_result_adjusted",
                 "okr_id": okr["id"],
                 "key_result_id": key_result_id,
                 "key_result_title": adjusted_key_result["title"],
                 "delta": payload.delta,
-                "new_current_value": adjusted_key_result["current_value"],
+                "previous_current_value": previous_current_value,
+                "new_current_value": new_current_value,
                 "unit": adjusted_key_result["unit"],
             },
             occurred_at=adjusted_key_result["updated_at"],

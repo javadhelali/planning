@@ -280,6 +280,10 @@ async def update_mission_step_route(
     if not title:
         raise HTTPException(status_code=400, detail="Step title is required.")
 
+    previous_step = await get_mission_step(step_id, user["id"])
+    if previous_step is None:
+        raise HTTPException(status_code=404, detail="Step not found")
+
     mission = await update_mission_step(
         step_id=step_id,
         user_id=user["id"],
@@ -290,17 +294,29 @@ async def update_mission_step_route(
     )
     if mission is None:
         raise HTTPException(status_code=404, detail="Step not found")
+
+    event_key = "mission_step_updated"
+    text = f'Updated step "{title}" in mission "{mission["title"]}".'
+    if payload.is_next and not previous_step["is_next"]:
+        event_key = "mission_step_marked_next"
+        text = f'Set step "{title}" as the next step in mission "{mission["title"]}".'
+    elif previous_step["is_next"] and not payload.is_next:
+        event_key = "mission_step_unmarked_next"
+        text = f'Removed next-step mark from "{title}" in mission "{mission["title"]}".'
+
     await record_activity_event(
         user_id=user["id"],
         source="missions",
-        text=f'Updated step "{title}" in mission "{mission["title"]}".',
+        text=text,
         metadata={
-            "event": "mission_step_updated",
+            "event": event_key,
             "step_id": step_id,
             "mission_id": mission["id"],
             "step_title": title,
             "is_next": payload.is_next,
+            "previous_is_next": previous_step["is_next"],
             "position": payload.position,
+            "previous_position": previous_step["position"],
         },
     )
     return mission
