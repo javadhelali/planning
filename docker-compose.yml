@@ -10,6 +10,7 @@ services:
     build: ./backend
     environment:
       - DATABASE_URL=postgresql://postgres:7NB05789o7uytOI@planning-db:5432/planning
+      - REDIS_URL=redis://planning-redis:6379/0
     networks:
       - apps
 
@@ -24,7 +25,21 @@ services:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_URL: https://questboard.ir
+        NEXT_PUBLIC_API_URL: http://api.questboard.ir
+    networks:
+      - apps
+  
+  planning-redis:
+    container_name: planning-redis
+    restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    image: redis:latest
+    ports:
+      - "127.0.0.1:6032:6379"
     networks:
       - apps
 
@@ -44,6 +59,27 @@ services:
       - "127.0.0.1:5498:5432"
     volumes:
       - /app/docker/planning-postgres:/var/lib/postgresql/data
+    networks:
+      - apps
+
+  planning-db-backup:
+    container_name: planning-db-backup
+    image: prodrigestivill/postgres-backup-local
+    restart: always
+    environment:
+      - SCHEDULE=@daily
+      - POSTGRES_HOST=planning-db
+      - POSTGRES_DB=planning
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=7NB05789o7uytOI
+      - POSTGRES_EXTRA_OPTS=--clean --if-exists -Z1
+      - BACKUP_KEEP_DAYS=3
+      - BACKUP_KEEP_WEEKS=1
+      - BACKUP_KEEP_MONTHS=1
+    volumes:
+      - /app/backups/planning-postgres:/backups
+    depends_on:
+      - planning-db
     networks:
       - apps
 

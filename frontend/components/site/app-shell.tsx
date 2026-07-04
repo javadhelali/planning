@@ -3,6 +3,7 @@
 import { toJalaali } from "jalaali-js";
 import {
   BookOpenText,
+  Bot,
   BriefcaseBusiness,
   CalendarDays,
   History,
@@ -29,7 +30,7 @@ type NavItem = {
   href: string;
   label: string;
   description: string;
-  icon: "dashboard" | "tasks" | "missions" | "okrs" | "glossary" | "activity" | "admin";
+  icon: "dashboard" | "tasks" | "missions" | "okrs" | "glossary" | "activity" | "agents" | "admin";
 };
 
 type FocusedTask = {
@@ -42,6 +43,7 @@ type FocusedTask = {
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Dashboard", description: "Overview", icon: "dashboard" },
+  { href: "/agents", label: "Agents", description: "AI agents", icon: "agents" },
   { href: "/tasks", label: "Tasks", description: "Task space", icon: "tasks" },
   { href: "/missions", label: "Missions", description: "Mission map", icon: "missions" },
   { href: "/okrs", label: "OKRs", description: "Goal tracking", icon: "okrs" },
@@ -77,6 +79,10 @@ function NavIcon({ icon, active }: { icon: NavItem["icon"]; active: boolean }) {
 
   if (icon === "activity") {
     return <History aria-hidden="true" className={className} color={active ? "var(--accent)" : "var(--foreground-muted)"} />;
+  }
+
+  if (icon === "agents") {
+    return <Bot aria-hidden="true" className={className} color={active ? "var(--accent)" : "var(--foreground-muted)"} />;
   }
 
   return <ListTodo aria-hidden="true" className={className} color={active ? "var(--accent)" : "var(--foreground-muted)"} />;
