@@ -6,6 +6,8 @@ from api.routes.glossary import router as glossary_router
 from api.routes.missions import router as missions_router
 from api.routes.okrs import router as okrs_router
 from api.routes.planning import router as planning_router
+from api.routes.projects import router as projects_router
+from api.routes.tmux import router as tmux_router
 from core.activity_events import bootstrap_activity_events
 from config import settings
 
@@ -22,6 +24,8 @@ app.add_middleware(
 app.include_router(planning_router)
 app.include_router(okrs_router)
 app.include_router(missions_router)
+app.include_router(projects_router)
+app.include_router(tmux_router)
 app.include_router(glossary_router)
 app.include_router(activity_events_router)
 app.include_router(auth_router)

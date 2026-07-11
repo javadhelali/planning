@@ -1,0 +1,16 @@
+{
+    "mcpServers": {
+        "postgres": {
+            "type": "stdio",
+            "command": "/app/code/planning/backend/mcps/postgres.sh",
+            "args": [],
+            "env": {}
+        },
+        "servers": {
+            "type": "stdio",
+            "command": "/app/code/planning/backend/mcps/servers.sh",
+            "args": [],
+            "env": {}
+        }
+    }
+}
