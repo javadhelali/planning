@@ -1,78 +1,54 @@
 "use client";
 
 import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
-  CircleStop,
-  CornerDownLeft,
-  Info,
-  Loader2,
+  Globe,
+  KeyRound,
+  PencilLine,
   Plus,
-  RotateCw,
-  Send,
   Server as ServerIcon,
-  TerminalSquare,
+  SquareTerminal,
+  Terminal,
   Trash2,
-  TriangleAlert,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 
-import { del, get, hasPlanningSession, post } from "../../utilities/api";
+import { del, get, hasPlanningSession, post, put } from "../../utilities/api";
+import { ActionMenu, ActionMenuItem } from "@/components/site/action-menu";
+import MetaItem from "@/components/site/meta-item";
 import Modal from "@/components/site/modal";
 import ToastStack from "@/components/site/toast-stack";
-import MetaItem from "@/components/site/meta-item";
 
 type AuthState = "checking" | "authenticated" | "guest";
 
-type Server = { id: number; name: string; host: string; port: number };
+type Server = {
+  id: number;
+  user_id: number;
+  name: string;
+  host: string;
+  port: number;
+  username: string | null;
+  key_path: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+};
 
-type Pane = { index: number; active: boolean; command: string };
-type Win = { index: number; name: string; active: boolean; panes_count: number; panes: Pane[] };
-type Session = { name: string; windows_count: number; activity: number; attached: boolean; windows: Win[] };
+type ToastMessage = {
+  id: number;
+  type: "success" | "error";
+  message: string;
+};
 
-type ToastMessage = { id: number; type: "success" | "error"; message: string };
+type ServerModalState =
+  | { mode: "create" }
+  | { mode: "edit"; server: Server }
+  | null;
 
-const POLL_MS = 1200;
-
-const QUICK_KEYS: Array<{ key: string; label: string; icon?: typeof ArrowUp }> = [
-  { key: "Enter", label: "Enter", icon: CornerDownLeft },
-  { key: "Up", label: "Up", icon: ArrowUp },
-  { key: "Down", label: "Down", icon: ArrowDown },
-  { key: "Left", label: "Left", icon: ArrowLeft },
-  { key: "Right", label: "Right", icon: ArrowRight },
-  { key: "Escape", label: "Esc" },
-  { key: "q", label: "q" },
-  { key: "C-c", label: "Ctrl-C", icon: CircleStop },
-];
-
-function timeAgo(epochSeconds: number): string {
-  if (!epochSeconds) return "unknown";
-  const diff = Math.max(0, Math.floor(Date.now() / 1000 - epochSeconds));
-  if (diff < 5) return "just now";
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-}
-
-async function readError(response: Response) {
+async function readErrorMessage(response: Response) {
   const payload = await response.json().catch(() => ({}));
   if (typeof payload?.detail === "string") return payload.detail;
   return `Request failed (${response.status})`;
-}
-
-function CommandBadge({ command }: { command: string }) {
-  return (
-    <span
-      className="inline-flex items-center rounded-full px-2 py-0.5 font-mono text-[11px]"
-      style={{ backgroundColor: "color-mix(in srgb, var(--background-elevated) 90%, transparent)", color: "var(--foreground-muted)" }}
-    >
-      {command || "?"}
-    </span>
-  );
 }
 
 function GuestHome() {
@@ -86,10 +62,10 @@ function GuestHome() {
           Servers
         </span>
         <h1 className="mt-5 max-w-2xl text-4xl font-semibold tracking-tight sm:text-5xl">
-          A live window into every tmux session on your servers.
+          Every machine your agents can reach, in one place.
         </h1>
         <p className="mt-4 max-w-xl text-base leading-7" style={{ color: "var(--foreground-muted)" }}>
-          Sign in to list tmux sessions, preview their screens, and send keys — right from the browser.
+          Register the SSH-reachable servers you run agents on. Authentication is public-key only — no passwords are stored.
         </p>
         <Link href="/login" className="button-primary mt-8 inline-flex rounded-full px-5 py-3 text-sm font-semibold">
           Sign in to your workspace
@@ -99,620 +75,352 @@ function GuestHome() {
   );
 }
 
+function LoadingState() {
+  return (
+    <div className="space-y-3">
+      <div className="skeleton h-10 w-44 rounded-2xl" />
+      <div className="skeleton h-28 rounded-[28px]" />
+      <div className="skeleton h-28 rounded-[28px]" />
+    </div>
+  );
+}
+
 export default function ServersPage() {
   const [authState, setAuthState] = useState<AuthState>("checking");
+  const [isLoading, setIsLoading] = useState(true);
   const [servers, setServers] = useState<Server[]>([]);
-  const [serversError, setServersError] = useState<string | null>(null);
-  const [selectedServerId, setSelectedServerId] = useState<number | null>(null);
-
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [treeLoading, setTreeLoading] = useState(false);
-  const [treeError, setTreeError] = useState<string | null>(null);
-
-  const [selectedSessionName, setSelectedSessionName] = useState<string | null>(null);
-  const [selectedWindowIndex, setSelectedWindowIndex] = useState<number | null>(null);
-  const [selectedPaneIndex, setSelectedPaneIndex] = useState<number | null>(null);
-
-  const [snapshot, setSnapshot] = useState<string>("");
-  const [snapshotError, setSnapshotError] = useState<string | null>(null);
-
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
-  const [isLive, setIsLive] = useState(true);
-  const [historyLines, setHistoryLines] = useState(500);
-  const [message, setMessage] = useState("");
+  const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
 
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [newSessionName, setNewSessionName] = useState("");
-  const [newCommand, setNewCommand] = useState("bash");
-  const [newCwd, setNewCwd] = useState("");
-  const [isCreating, setIsCreating] = useState(false);
+  const [serverModal, setServerModal] = useState<ServerModalState>(null);
+  const [serverName, setServerName] = useState("");
+  const [serverHost, setServerHost] = useState("");
+  const [serverPort, setServerPort] = useState("22");
+  const [serverUsername, setServerUsername] = useState("");
+  const [serverKeyPath, setServerKeyPath] = useState("");
+  const [isServerSubmitting, setIsServerSubmitting] = useState(false);
 
-  const pollRef = useRef<number | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Server | null>(null);
+  const [isDeleteBusy, setIsDeleteBusy] = useState(false);
 
-  function pushToast(type: ToastMessage["type"], text: string) {
+  const pushToast = useCallback((type: ToastMessage["type"], message: string) => {
     const id = Date.now() + Math.random();
-    setToasts((current) => [...current, { id, type, message: text }]);
-    window.setTimeout(() => setToasts((current) => current.filter((toast) => toast.id !== id)), 3500);
-  }
-  function dismissToast(id: number) {
-    setToasts((current) => current.filter((toast) => toast.id !== id));
-  }
-
-  const selectedServer = useMemo(() => servers.find((server) => server.id === selectedServerId) ?? null, [servers, selectedServerId]);
-  const selectedSession = useMemo(() => sessions.find((session) => session.name === selectedSessionName) ?? null, [sessions, selectedSessionName]);
-  const selectedWindow = useMemo(
-    () => selectedSession?.windows.find((window) => window.index === selectedWindowIndex) ?? null,
-    [selectedSession, selectedWindowIndex],
-  );
-  const target = useMemo(() => {
-    if (!selectedSessionName || selectedWindowIndex === null || selectedPaneIndex === null) return null;
-    return `${selectedSessionName}:${selectedWindowIndex}.${selectedPaneIndex}`;
-  }, [selectedSessionName, selectedWindowIndex, selectedPaneIndex]);
-
-  function focusSession(session: Session | null) {
-    if (!session) {
-      setSelectedSessionName(null);
-      setSelectedWindowIndex(null);
-      setSelectedPaneIndex(null);
-      return;
-    }
-    const activeWindow = session.windows.find((window) => window.active) ?? session.windows[0] ?? null;
-    const activePane = activeWindow?.panes.find((pane) => pane.active) ?? activeWindow?.panes[0] ?? null;
-    setSelectedSessionName(session.name);
-    setSelectedWindowIndex(activeWindow?.index ?? null);
-    setSelectedPaneIndex(activePane?.index ?? null);
-  }
-
-  function focusWindow(window: Win) {
-    const activePane = window.panes.find((pane) => pane.active) ?? window.panes[0] ?? null;
-    setSelectedWindowIndex(window.index);
-    setSelectedPaneIndex(activePane?.index ?? null);
-  }
-
-  // --- data loading ---------------------------------------------------------
-
-  const loadServers = useCallback(async () => {
-    try {
-      const response = await get("/planning/servers");
-      if (!response.ok) {
-        setServersError(await readError(response));
-        return;
-      }
-      const data: Server[] = await response.json();
-      setServers(data);
-      setServersError(null);
-      setSelectedServerId((current) => current ?? data[0]?.id ?? null);
-    } catch {
-      setServersError("Could not load servers.");
-    }
+    setToasts((current) => [...current, { id, type, message }]);
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+    }, 4000);
   }, []);
 
-  const loadSessions = useCallback(async (serverId: number, keepSelection: boolean) => {
-    setTreeLoading(true);
-    setTreeError(null);
+  const dismissToast = useCallback((id: number) => {
+    setToasts((current) => current.filter((toast) => toast.id !== id));
+  }, []);
+
+  const loadServers = useCallback(async () => {
+    setIsLoading(true);
     try {
-      const response = await get(`/planning/servers/${serverId}/sessions`);
-      const data = await response.json().catch(() => ({ ok: false, error: "Bad response" }));
-      if (!response.ok || !data.ok) {
-        setSessions([]);
-        setTreeError(data?.error ?? (await readError(response)));
-        focusSession(null);
-        return;
-      }
-      const nextSessions: Session[] = data.sessions ?? [];
-      setSessions(nextSessions);
-      setTreeError(null);
-      if (keepSelection && selectedSessionName) {
-        const still = nextSessions.find((session) => session.name === selectedSessionName);
-        if (still) {
-          // keep window/pane if they still exist, else refocus
-          const win = still.windows.find((w) => w.index === selectedWindowIndex);
-          const pane = win?.panes.find((p) => p.index === selectedPaneIndex);
-          if (!win || !pane) focusSession(still);
-        } else {
-          focusSession(nextSessions[0] ?? null);
-        }
+      const response = await get("/planning/servers");
+      if (response.ok) {
+        setServers(await response.json());
       } else {
-        focusSession(nextSessions[0] ?? null);
+        pushToast("error", await readErrorMessage(response));
       }
     } catch {
-      setSessions([]);
-      setTreeError("Could not reach the server.");
-      focusSession(null);
+      pushToast("error", "Could not load servers.");
     } finally {
-      setTreeLoading(false);
+      setIsLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSessionName, selectedWindowIndex, selectedPaneIndex]);
-
-  const loadSnapshot = useCallback(async () => {
-    if (selectedServerId === null || !target) return;
-    try {
-      const linesParam = historyLines > 0 ? `&lines=${historyLines}` : "";
-      const response = await get(`/planning/servers/${selectedServerId}/capture?target=${encodeURIComponent(target)}${linesParam}`);
-      const data = await response.json().catch(() => ({ ok: false, error: "Bad response" }));
-      if (!response.ok || !data.ok) {
-        setSnapshotError(data?.error ?? "Capture failed");
-        return;
-      }
-      setSnapshot(data.text ?? "");
-      setSnapshotError(null);
-    } catch {
-      setSnapshotError("Could not capture the pane.");
-    }
-  }, [selectedServerId, target, historyLines]);
-
-  // --- effects --------------------------------------------------------------
+  }, [pushToast]);
 
   useEffect(() => {
     setAuthState(hasPlanningSession() ? "authenticated" : "guest");
   }, []);
 
   useEffect(() => {
-    if (authState === "authenticated") void loadServers();
+    if (authState !== "authenticated") return;
+    void loadServers();
   }, [authState, loadServers]);
 
   useEffect(() => {
-    if (selectedServerId !== null) void loadSessions(selectedServerId, false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedServerId]);
-
-  // poll the focused pane
-  useEffect(() => {
-    if (pollRef.current) {
-      window.clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-    if (!isLive || !target) return;
-    void loadSnapshot();
-    pollRef.current = window.setInterval(() => void loadSnapshot(), POLL_MS);
-    return () => {
-      if (pollRef.current) window.clearInterval(pollRef.current);
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest("[data-action-menu-root]")) {
+        setOpenMenuKey(null);
+      }
     };
-  }, [isLive, target, loadSnapshot]);
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, []);
 
-  // reset snapshot when target clears
-  useEffect(() => {
-    if (!target) {
-      setSnapshot("");
-      setSnapshotError(null);
-    }
-  }, [target]);
+  const toggleMenu = useCallback((menuKey: string) => {
+    setOpenMenuKey((current) => (current === menuKey ? null : menuKey));
+  }, []);
 
-  // --- actions --------------------------------------------------------------
-
-  async function sendKey(key: string) {
-    if (selectedServerId === null || !target) return;
-    try {
-      const response = await post(`/planning/servers/${selectedServerId}/send-key`, { target, key });
-      const data = await response.json().catch(() => ({ ok: false }));
-      if (!response.ok || !data.ok) {
-        pushToast("error", data?.error ?? "Could not send key");
-        return;
-      }
-      window.setTimeout(() => void loadSnapshot(), 250);
-    } catch {
-      pushToast("error", "Could not send key");
-    }
+  function openCreateServer() {
+    setServerName("");
+    setServerHost("");
+    setServerPort("22");
+    setServerUsername("");
+    setServerKeyPath("");
+    setServerModal({ mode: "create" });
   }
 
-  async function sendMessage() {
-    if (selectedServerId === null || !target || !message.trim()) return;
-    const text = message;
-    setMessage("");
-    try {
-      const response = await post(`/planning/servers/${selectedServerId}/send-text`, { target, text, enter: true });
-      const data = await response.json().catch(() => ({ ok: false }));
-      if (!response.ok || !data.ok) {
-        pushToast("error", data?.error ?? "Could not send text");
-        return;
-      }
-      window.setTimeout(() => void loadSnapshot(), 250);
-    } catch {
-      pushToast("error", "Could not send text");
-    }
+  function openEditServer(server: Server) {
+    setServerName(server.name);
+    setServerHost(server.host);
+    setServerPort(String(server.port));
+    setServerUsername(server.username ?? "");
+    setServerKeyPath(server.key_path ?? "");
+    setServerModal({ mode: "edit", server });
   }
 
-  async function createSession(event: React.FormEvent) {
+  function closeServerModal() {
+    if (isServerSubmitting) return;
+    setServerModal(null);
+  }
+
+  async function handleSubmitServer(event: FormEvent) {
     event.preventDefault();
-    if (selectedServerId === null) return;
-    setIsCreating(true);
+    if (!serverModal) return;
+
+    const body = {
+      name: serverName.trim(),
+      host: serverHost.trim(),
+      port: Number.parseInt(serverPort, 10) || 22,
+      username: serverUsername.trim() || null,
+      key_path: serverKeyPath.trim() || null,
+    };
+
+    setIsServerSubmitting(true);
     try {
-      const response = await post(`/planning/servers/${selectedServerId}/sessions`, {
-        name: newSessionName.trim(),
-        command: newCommand.trim() || "bash",
-        cwd: newCwd.trim() || null,
-      });
-      const data = await response.json().catch(() => ({ ok: false }));
-      if (!response.ok || !data.ok) {
-        pushToast("error", data?.error ?? "Could not create session");
+      const response =
+        serverModal.mode === "create"
+          ? await post("/planning/servers", body)
+          : await put(`/planning/servers/${serverModal.server.id}`, { ...body, position: serverModal.server.position });
+
+      if (!response.ok) {
+        pushToast("error", await readErrorMessage(response));
         return;
       }
-      pushToast("success", `Created session "${newSessionName.trim()}"`);
-      const created = newSessionName.trim();
-      setIsCreateOpen(false);
-      setNewSessionName("");
-      setNewCommand("bash");
-      setNewCwd("");
-      await loadSessions(selectedServerId, false);
-      setSelectedSessionName(created);
-      const server = selectedServerId;
-      window.setTimeout(() => {
-        setSessions((current) => {
-          const match = current.find((s) => s.name === created);
-          if (match) focusSession(match);
-          return current;
-        });
-        void server;
-      }, 0);
+
+      pushToast("success", serverModal.mode === "create" ? "Server added." : "Server updated.");
+      setServerModal(null);
+      await loadServers();
     } catch {
-      pushToast("error", "Could not create session");
+      pushToast("error", "Something went wrong. Please try again.");
     } finally {
-      setIsCreating(false);
+      setIsServerSubmitting(false);
     }
   }
 
-  async function killSession(name: string) {
-    if (selectedServerId === null) return;
+  async function handleConfirmDelete() {
+    if (!pendingDelete) return;
+    setIsDeleteBusy(true);
     try {
-      const response = await del(`/planning/servers/${selectedServerId}/sessions/${encodeURIComponent(name)}`);
-      const data = await response.json().catch(() => ({ ok: false }));
-      if (!response.ok || !data.ok) {
-        pushToast("error", data?.error ?? "Could not kill session");
+      const response = await del(`/planning/servers/${pendingDelete.id}`);
+      if (!response.ok) {
+        pushToast("error", await readErrorMessage(response));
         return;
       }
-      pushToast("success", `Killed session "${name}"`);
-      await loadSessions(selectedServerId, false);
+      pushToast("success", "Server removed.");
+      setPendingDelete(null);
+      await loadServers();
     } catch {
-      pushToast("error", "Could not kill session");
+      pushToast("error", "Something went wrong. Please try again.");
+    } finally {
+      setIsDeleteBusy(false);
     }
   }
 
-  // --- render ---------------------------------------------------------------
-
-  if (authState === "checking") return <div className="skeleton h-64 rounded-[28px]" />;
+  if (authState === "checking") return <LoadingState />;
   if (authState === "guest") return <GuestHome />;
 
   return (
-    <div className="flex min-h-[calc(100vh-112px)] min-w-0 flex-col gap-6">
+    <div className="flex min-h-[calc(100vh-112px)] min-w-0 flex-col gap-8">
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
 
       {/* Header */}
-      <section className="px-1">
-        <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">Servers</h2>
-        <p className="mt-1 max-w-2xl text-sm leading-6 sm:text-base" style={{ color: "var(--foreground-muted)" }}>
-          Manage the tmux sessions on each server. Pick a server, open a session to preview its screen, and send keys —
-          the same session you would reach with <span className="font-mono text-[0.85em]">tmux attach</span>.
-        </p>
+      <section className="flex flex-wrap items-end justify-between gap-3 px-1">
+        <div>
+          <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">Servers</h2>
+          <p className="mt-1 max-w-2xl text-sm leading-6 sm:text-base" style={{ color: "var(--foreground-muted)" }}>
+            Machines reachable over SSH with public-key auth. Manage them here, link them to{" "}
+            <Link href="/projects" className="font-semibold" style={{ color: "var(--accent)" }}>projects</Link>, and open their{" "}
+            <Link href="/terminals" className="font-semibold" style={{ color: "var(--accent)" }}>terminals</Link>.
+          </p>
+          <div className="mt-2 flex items-center gap-x-4 text-xs sm:text-sm" style={{ color: "var(--foreground-muted)" }}>
+            <MetaItem icon={<ServerIcon className="h-3.5 w-3.5" aria-hidden="true" />}>{servers.length} servers</MetaItem>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={openCreateServer}
+          className="button-primary inline-flex h-11 items-center gap-2 rounded-full px-4 text-sm font-semibold"
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          New server
+        </button>
       </section>
 
-      {/* Server switcher */}
-      {serversError ? (
-        <div className="surface-subtle rounded-2xl px-4 py-3 text-sm" style={{ color: "var(--danger)" }}>{serversError}</div>
+      {isLoading ? (
+        <LoadingState />
       ) : servers.length === 0 ? (
-        <div className="surface-subtle rounded-2xl px-4 py-3 text-sm" style={{ color: "var(--foreground-muted)" }}>
-          No servers defined yet. Add one in the <Link href="/projects" className="font-semibold" style={{ color: "var(--accent)" }}>Projects</Link> section first.
+        <div className="surface-subtle rounded-[28px] px-6 py-12 text-center">
+          <ServerIcon className="mx-auto h-8 w-8" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" />
+          <p className="mt-3 text-sm" style={{ color: "var(--foreground-muted)" }}>
+            No servers yet. Add the first machine to start mapping your infrastructure.
+          </p>
         </div>
       ) : (
-        <div className="flex flex-wrap gap-2 px-1">
-          {servers.map((server) => {
-            const active = server.id === selectedServerId;
-            return (
-              <button
-                key={server.id}
-                type="button"
-                onClick={() => setSelectedServerId(server.id)}
-                className="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition"
-                style={{
-                  borderColor: active ? "var(--accent)" : "color-mix(in srgb, var(--card-border) 70%, transparent)",
-                  backgroundColor: active ? "var(--accent-tint)" : "transparent",
-                  color: active ? "var(--accent)" : "var(--foreground)",
-                }}
-              >
-                <ServerIcon className="h-4 w-4" aria-hidden="true" />
-                <span>{server.name}</span>
-                <span className="text-xs" style={{ color: "var(--foreground-muted)" }}>{server.host}</span>
-              </button>
-            );
-          })}
+        <div className="grid gap-4 md:grid-cols-2">
+          {servers.map((server) => (
+            <article key={server.id} className="surface-card group relative rounded-[28px] p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h4 className="truncate text-base font-semibold">{server.name}</h4>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs" style={{ color: "var(--foreground-muted)" }}>
+                    <MetaItem icon={<Globe className="h-3.5 w-3.5" aria-hidden="true" />}>
+                      {server.host}:{server.port}
+                    </MetaItem>
+                    {server.username ? (
+                      <MetaItem icon={<Terminal className="h-3.5 w-3.5" aria-hidden="true" />}>{server.username}</MetaItem>
+                    ) : null}
+                    <MetaItem icon={<KeyRound className="h-3.5 w-3.5" aria-hidden="true" />}>
+                      {server.key_path ? server.key_path : "default key"}
+                    </MetaItem>
+                  </div>
+                  <Link
+                    href="/terminals"
+                    className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold"
+                    style={{ color: "var(--accent)" }}
+                  >
+                    <SquareTerminal className="h-3.5 w-3.5" aria-hidden="true" />
+                    Open terminals
+                  </Link>
+                </div>
+                <ActionMenu menuKey={`server-${server.id}`} openMenuKey={openMenuKey} onToggle={toggleMenu} adaptiveDirection>
+                  <ActionMenuItem onClick={() => { setOpenMenuKey(null); openEditServer(server); }}>
+                    <span className="inline-flex items-center gap-2">
+                      <PencilLine className="h-4 w-4" aria-hidden="true" /> Edit
+                    </span>
+                  </ActionMenuItem>
+                  <ActionMenuItem tone="danger" onClick={() => { setOpenMenuKey(null); setPendingDelete(server); }}>
+                    <span className="inline-flex items-center gap-2">
+                      <Trash2 className="h-4 w-4" aria-hidden="true" /> Delete
+                    </span>
+                  </ActionMenuItem>
+                </ActionMenu>
+              </div>
+            </article>
+          ))}
         </div>
       )}
 
-      {/* Master–detail */}
-      {selectedServer ? (
-        <div className="grid min-w-0 flex-1 gap-5 lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
-          {/* Session list */}
-          <aside className="flex min-w-0 flex-col gap-3">
-            <div className="flex items-center justify-between px-1">
-              <p className="text-sm font-semibold">
-                Sessions on <span style={{ color: "var(--accent)" }}>{selectedServer.name}</span>
-              </p>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => void loadSessions(selectedServer.id, true)}
-                  className="button-secondary inline-flex h-9 w-9 items-center justify-center rounded-full"
-                  title="Refresh sessions"
-                >
-                  <RotateCw className={`h-4 w-4 ${treeLoading ? "animate-spin" : ""}`} aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsCreateOpen(true)}
-                  className="button-primary inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-semibold"
-                >
-                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                  New
-                </button>
-              </div>
-            </div>
-
-            {treeError ? (
-              <div className="surface-subtle flex items-start gap-2 rounded-[24px] px-4 py-4 text-sm" style={{ color: "var(--danger)" }}>
-                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <div>
-                  <p className="font-semibold">Couldn&apos;t reach {selectedServer.name}</p>
-                  <p className="mt-1 break-words text-xs" style={{ color: "var(--foreground-muted)" }}>{treeError}</p>
-                </div>
-              </div>
-            ) : treeLoading && sessions.length === 0 ? (
-              <div className="skeleton h-24 rounded-[24px]" />
-            ) : sessions.length === 0 ? (
-              <div className="surface-subtle rounded-[24px] px-5 py-10 text-center">
-                <TerminalSquare className="mx-auto h-8 w-8" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" />
-                <p className="mt-3 text-sm" style={{ color: "var(--foreground-muted)" }}>No tmux sessions running on this server.</p>
-              </div>
-            ) : (
-              sessions.map((session) => {
-                const active = session.name === selectedSessionName;
-                const paneTotal = session.windows.reduce((sum, window) => sum + window.panes.length, 0);
-                return (
-                  <button
-                    key={session.name}
-                    type="button"
-                    onClick={() => focusSession(session)}
-                    className="surface-card rounded-[24px] p-4 text-left transition"
-                    style={{
-                      outline: active ? "2px solid var(--accent)" : "2px solid transparent",
-                      boxShadow: active ? "var(--shadow-3)" : undefined,
-                    }}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate font-mono text-sm font-semibold">{session.name}</span>
-                      {session.attached ? (
-                        <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase" style={{ backgroundColor: "var(--success-tint)", color: "var(--success)" }}>attached</span>
-                      ) : null}
-                    </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" style={{ color: "var(--foreground-muted)" }}>
-                      <span>{session.windows_count} {session.windows_count === 1 ? "window" : "windows"}</span>
-                      <span>· {paneTotal} {paneTotal === 1 ? "pane" : "panes"}</span>
-                      <span>· {timeAgo(session.activity)}</span>
-                    </div>
-                  </button>
-                );
-              })
-            )}
-          </aside>
-
-          {/* Detail */}
-          <section className="surface-card flex min-w-0 flex-col rounded-[28px]">
-            {selectedSession && target ? (
-              <>
-                {/* Detail header */}
-                <div className="flex flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: "color-mix(in srgb, var(--card-border) 60%, transparent)" }}>
-                  <div className="min-w-0">
-                    <h3 className="truncate font-mono text-lg font-semibold">{selectedSession.name}</h3>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" style={{ color: "var(--foreground-muted)" }}>
-                      <MetaItem icon={<ServerIcon className="h-3.5 w-3.5" aria-hidden="true" />}>{selectedServer.name}</MetaItem>
-                      <MetaItem icon={<TerminalSquare className="h-3.5 w-3.5" aria-hidden="true" />}>tmux attach -t {selectedSession.name}</MetaItem>
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsLive((value) => !value)}
-                      className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium"
-                      style={{ borderColor: "color-mix(in srgb, var(--card-border) 70%, transparent)", color: isLive ? "var(--success)" : "var(--foreground-muted)" }}
-                    >
-                      <span className="relative flex h-2 w-2">
-                        {isLive ? <span className="absolute inline-flex h-full w-full animate-ping rounded-full" style={{ backgroundColor: "var(--success)", opacity: 0.6 }} /> : null}
-                        <span className="relative inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: isLive ? "var(--success)" : "var(--foreground-muted)" }} />
-                      </span>
-                      {isLive ? "Live" : "Paused"}
-                    </button>
-                    <button type="button" onClick={() => void loadSnapshot()} className="button-secondary inline-flex h-9 w-9 items-center justify-center rounded-full" title="Refresh snapshot">
-                      <RotateCw className="h-4 w-4" aria-hidden="true" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Window tabs (only when >1 window) */}
-                {selectedSession.windows.length > 1 ? (
-                  <div className="flex flex-wrap gap-1.5 px-5 pt-4">
-                    {selectedSession.windows.map((window) => {
-                      const active = window.index === selectedWindowIndex;
-                      return (
-                        <button
-                          key={window.index}
-                          type="button"
-                          onClick={() => focusWindow(window)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium"
-                          style={{
-                            borderColor: active ? "var(--accent)" : "color-mix(in srgb, var(--card-border) 70%, transparent)",
-                            backgroundColor: active ? "var(--accent-tint)" : "transparent",
-                            color: active ? "var(--accent)" : "var(--foreground-muted)",
-                          }}
-                        >
-                          <span className="font-mono">{window.index}:{window.name}</span>
-                          {window.panes.length > 1 ? <span className="opacity-70">({window.panes.length})</span> : null}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : null}
-
-                {/* Pane chips (only when >1 pane in the window) */}
-                {selectedWindow && selectedWindow.panes.length > 1 ? (
-                  <div className="flex flex-wrap items-center gap-1.5 px-5 pt-3">
-                    <span className="text-xs" style={{ color: "var(--foreground-muted)" }}>Pane:</span>
-                    {selectedWindow.panes.map((pane) => {
-                      const active = pane.index === selectedPaneIndex;
-                      return (
-                        <button
-                          key={pane.index}
-                          type="button"
-                          onClick={() => setSelectedPaneIndex(pane.index)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium"
-                          style={{
-                            borderColor: active ? "var(--accent)" : "color-mix(in srgb, var(--card-border) 70%, transparent)",
-                            backgroundColor: active ? "var(--accent-tint)" : "transparent",
-                            color: active ? "var(--accent)" : "var(--foreground-muted)",
-                          }}
-                        >
-                          <span className="font-mono">%{pane.index}</span>
-                          <CommandBadge command={pane.command} />
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : null}
-
-                {/* Terminal snapshot */}
-                <div className="px-5 pt-4">
-                  <div className="flex items-center justify-between gap-2 px-1 pb-2 text-xs" style={{ color: "var(--foreground-muted)" }}>
-                    <span className="truncate font-mono">{target}</span>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <label className="flex items-center gap-1">
-                        <span>history</span>
-                        <select
-                          value={historyLines}
-                          onChange={(event) => setHistoryLines(Number(event.target.value))}
-                          className="rounded-md border bg-transparent px-1.5 py-0.5"
-                          style={{ borderColor: "color-mix(in srgb, var(--card-border) 70%, transparent)", color: "var(--foreground)" }}
-                        >
-                          <option value={0}>Screen only</option>
-                          <option value={100}>100 lines</option>
-                          <option value={500}>500 lines</option>
-                          <option value={2000}>2000 lines</option>
-                        </select>
-                      </label>
-                      <span>{timeAgo(selectedSession.activity)}</span>
-                    </div>
-                  </div>
-                  <div className="overflow-auto rounded-2xl" style={{ backgroundColor: "#0c0f14", border: "1px solid #232a33", maxHeight: "60vh" }}>
-                    {snapshotError ? (
-                      <div className="px-4 py-4 text-[12.5px]" style={{ fontFamily: "var(--font-mono)", color: "#eba7a0" }}>{snapshotError}</div>
-                    ) : (
-                      <pre className="min-w-[520px] px-4 py-4 text-[12.5px] leading-[1.5]" style={{ fontFamily: "var(--font-mono)", color: "#d6dde6", whiteSpace: "pre" }}>
-                        {snapshot || " "}
-                      </pre>
-                    )}
-                  </div>
-                </div>
-
-                {/* Composer + keys */}
-                <div className="mt-auto px-5 pb-5 pt-4">
-                  <div className="flex flex-wrap items-center gap-1.5 pb-3">
-                    {QUICK_KEYS.map((quick) => {
-                      const Icon = quick.icon;
-                      return (
-                        <button
-                          key={quick.key}
-                          type="button"
-                          onClick={() => void sendKey(quick.key)}
-                          className="inline-flex h-9 items-center gap-1 rounded-xl border px-2.5 text-xs font-medium"
-                          style={{ borderColor: "color-mix(in srgb, var(--card-border) 70%, transparent)", color: "var(--foreground-muted)" }}
-                          title={`Send ${quick.label}`}
-                        >
-                          {Icon ? <Icon className="h-3.5 w-3.5" aria-hidden="true" /> : null}
-                          {quick.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div className="flex items-end gap-2">
-                    <textarea
-                      value={message}
-                      onChange={(event) => setMessage(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                          event.preventDefault();
-                          void sendMessage();
-                        }
-                      }}
-                      rows={2}
-                      placeholder="Type a command to send…  (⌘/Ctrl + Enter to send)"
-                      className="field min-h-[52px] flex-1 rounded-2xl px-4 py-3 text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void sendMessage()}
-                      disabled={!message.trim()}
-                      className="button-primary inline-flex h-[52px] items-center gap-2 rounded-2xl px-4 text-sm font-semibold disabled:opacity-50"
-                    >
-                      <Send className="h-4 w-4" aria-hidden="true" />
-                      Send
-                    </button>
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void killSession(selectedSession.name)}
-                      className="button-danger inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
-                    >
-                      <Trash2 className="h-4 w-4" aria-hidden="true" />
-                      Kill session
-                    </button>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
-                {treeLoading ? (
-                  <Loader2 className="h-8 w-8 animate-spin" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" />
-                ) : (
-                  <>
-                    <TerminalSquare className="h-9 w-9" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" />
-                    <p className="mt-3 text-sm" style={{ color: "var(--foreground-muted)" }}>Select a session to preview it, or create a new one.</p>
-                  </>
-                )}
-              </div>
-            )}
-          </section>
-        </div>
-      ) : null}
-
-      {/* New session modal */}
+      {/* Server modal */}
       <Modal
-        isOpen={isCreateOpen}
-        onClose={() => { if (!isCreating) setIsCreateOpen(false); }}
-        title="New tmux session"
-        description={selectedServer ? `Start a detached tmux session on ${selectedServer.name}.` : "Start a detached tmux session."}
+        isOpen={serverModal !== null}
+        onClose={closeServerModal}
+        title={serverModal?.mode === "edit" ? "Edit server" : "Add server"}
+        description="Connection details for an SSH-reachable machine. Authentication is public-key only."
       >
-        <form onSubmit={createSession} className="space-y-4">
+        <form onSubmit={handleSubmitServer} className="space-y-4">
           <div>
-            <label htmlFor="new-session-name" className="text-sm font-semibold">Session name</label>
-            <input id="new-session-name" value={newSessionName} onChange={(event) => setNewSessionName(event.target.value)} className="field mt-2 rounded-2xl px-4 py-3 font-mono text-sm" placeholder="deploy" required />
+            <label htmlFor="server-name" className="text-sm font-semibold">Name</label>
+            <input
+              id="server-name"
+              value={serverName}
+              onChange={(event) => setServerName(event.target.value)}
+              className="field mt-2 rounded-2xl px-4 py-3 text-sm"
+              placeholder="prod-box-1"
+              required
+            />
           </div>
+
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">
+            <div>
+              <label htmlFor="server-host" className="text-sm font-semibold">Host / IP</label>
+              <input
+                id="server-host"
+                value={serverHost}
+                onChange={(event) => setServerHost(event.target.value)}
+                className="field mt-2 rounded-2xl px-4 py-3 text-sm"
+                placeholder="203.0.113.10"
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="server-port" className="text-sm font-semibold">Port</label>
+              <input
+                id="server-port"
+                type="number"
+                min={1}
+                max={65535}
+                value={serverPort}
+                onChange={(event) => setServerPort(event.target.value)}
+                className="field mt-2 rounded-2xl px-4 py-3 text-sm"
+                required
+              />
+            </div>
+          </div>
+
           <div>
-            <label htmlFor="new-session-command" className="text-sm font-semibold">Command</label>
-            <input id="new-session-command" value={newCommand} onChange={(event) => setNewCommand(event.target.value)} className="field mt-2 rounded-2xl px-4 py-3 font-mono text-sm" placeholder="bash" />
-            <p className="mt-1.5 text-xs" style={{ color: "var(--foreground-muted)" }}>What runs in the pane. Leave as a shell, or run something directly (e.g. <span className="font-mono">./deploy.sh</span>).</p>
+            <label htmlFor="server-username" className="text-sm font-semibold">SSH username</label>
+            <input
+              id="server-username"
+              value={serverUsername}
+              onChange={(event) => setServerUsername(event.target.value)}
+              className="field mt-2 rounded-2xl px-4 py-3 text-sm"
+              placeholder="ubuntu"
+            />
           </div>
+
           <div>
-            <label htmlFor="new-session-cwd" className="text-sm font-semibold">Working directory</label>
-            <input id="new-session-cwd" value={newCwd} onChange={(event) => setNewCwd(event.target.value)} className="field mt-2 rounded-2xl px-4 py-3 font-mono text-sm" placeholder="/app/code/planning (optional)" />
+            <label htmlFor="server-key-path" className="text-sm font-semibold">Private key path</label>
+            <input
+              id="server-key-path"
+              value={serverKeyPath}
+              onChange={(event) => setServerKeyPath(event.target.value)}
+              className="field mt-2 rounded-2xl px-4 py-3 text-sm"
+              placeholder="~/.ssh/id_ed25519 (blank = default key)"
+            />
+            <p className="mt-1.5 text-xs" style={{ color: "var(--foreground-muted)" }}>
+              Path on the local machine. Leave blank to use the default SSH key. The key itself is never stored here.
+            </p>
           </div>
+
           <div className="flex items-center justify-end gap-2">
-            <button type="button" onClick={() => setIsCreateOpen(false)} disabled={isCreating} className="button-secondary rounded-2xl px-4 py-3 text-sm font-medium">Cancel</button>
-            <button type="submit" disabled={isCreating} className="button-primary inline-flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold">
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              {isCreating ? "Creating…" : "Create session"}
+            <button type="button" onClick={closeServerModal} disabled={isServerSubmitting} className="button-secondary rounded-2xl px-4 py-3 text-sm font-medium">
+              Cancel
+            </button>
+            <button type="submit" disabled={isServerSubmitting} className="button-primary rounded-2xl px-4 py-3 text-sm font-semibold">
+              {isServerSubmitting ? "Saving..." : serverModal?.mode === "edit" ? "Save server" : "Add server"}
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Delete confirmation */}
+      <Modal
+        isOpen={pendingDelete !== null}
+        onClose={() => {
+          if (isDeleteBusy) return;
+          setPendingDelete(null);
+        }}
+        title="Remove server?"
+        description="Projects on this server will be unlinked, not deleted."
+      >
+        <div className="space-y-4">
+          <p className="text-sm leading-6" style={{ color: "var(--foreground-muted)" }}>
+            {pendingDelete ? `Remove server "${pendingDelete.name}"?` : ""}
+          </p>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button type="button" onClick={() => setPendingDelete(null)} disabled={isDeleteBusy} className="button-secondary rounded-2xl px-4 py-3 text-sm font-medium">
+              Cancel
+            </button>
+            <button type="button" onClick={() => void handleConfirmDelete()} disabled={isDeleteBusy} className="button-danger rounded-2xl px-4 py-3 text-sm font-semibold">
+              {isDeleteBusy ? "Removing..." : "Remove server"}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

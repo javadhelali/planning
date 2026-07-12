@@ -2,13 +2,11 @@
 
 import {
   FolderGit2,
-  Globe,
   HardDrive,
-  KeyRound,
   PencilLine,
   Plus,
   Server as ServerIcon,
-  Terminal,
+  SquareTerminal,
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
@@ -57,19 +55,9 @@ type ToastMessage = {
   message: string;
 };
 
-type ServerModalState =
-  | { mode: "create" }
-  | { mode: "edit"; server: Server }
-  | null;
-
 type ProjectModalState =
   | { mode: "create" }
   | { mode: "edit"; project: Project }
-  | null;
-
-type PendingConfirmation =
-  | { kind: "delete_server"; server: Server }
-  | { kind: "delete_project"; project: Project }
   | null;
 
 const PROJECT_KINDS: Array<{ value: ProjectKind; label: string }> = [
@@ -152,14 +140,6 @@ export default function ProjectsPage() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
 
-  const [serverModal, setServerModal] = useState<ServerModalState>(null);
-  const [serverName, setServerName] = useState("");
-  const [serverHost, setServerHost] = useState("");
-  const [serverPort, setServerPort] = useState("22");
-  const [serverUsername, setServerUsername] = useState("");
-  const [serverKeyPath, setServerKeyPath] = useState("");
-  const [isServerSubmitting, setIsServerSubmitting] = useState(false);
-
   const [projectModal, setProjectModal] = useState<ProjectModalState>(null);
   const [projectName, setProjectName] = useState("");
   const [projectServerId, setProjectServerId] = useState<string>("");
@@ -168,7 +148,7 @@ export default function ProjectsPage() {
   const [projectDescription, setProjectDescription] = useState("");
   const [isProjectSubmitting, setIsProjectSubmitting] = useState(false);
 
-  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation>(null);
+  const [pendingDelete, setPendingDelete] = useState<Project | null>(null);
   const [isConfirmationBusy, setIsConfirmationBusy] = useState(false);
 
   const pushToast = useCallback((type: ToastMessage["type"], message: string) => {
@@ -223,71 +203,6 @@ export default function ProjectsPage() {
   const toggleMenu = useCallback((menuKey: string) => {
     setOpenMenuKey((current) => (current === menuKey ? null : menuKey));
   }, []);
-
-  // ---- Server modal helpers -------------------------------------------------
-
-  function openCreateServer() {
-    setServerName("");
-    setServerHost("");
-    setServerPort("22");
-    setServerUsername("");
-    setServerKeyPath("");
-    setServerModal({ mode: "create" });
-  }
-
-  function openEditServer(server: Server) {
-    setServerName(server.name);
-    setServerHost(server.host);
-    setServerPort(String(server.port));
-    setServerUsername(server.username ?? "");
-    setServerKeyPath(server.key_path ?? "");
-    setServerModal({ mode: "edit", server });
-  }
-
-  function closeServerModal() {
-    if (isServerSubmitting) return;
-    setServerModal(null);
-  }
-
-  async function handleSubmitServer(event: FormEvent) {
-    event.preventDefault();
-    if (!serverModal) return;
-
-    const parsedPort = Number.parseInt(serverPort, 10);
-    if (Number.isNaN(parsedPort) || parsedPort < 1 || parsedPort > 65535) {
-      pushToast("error", "Port must be between 1 and 65535.");
-      return;
-    }
-
-    const body = {
-      name: serverName.trim(),
-      host: serverHost.trim(),
-      port: parsedPort,
-      username: serverUsername.trim() || null,
-      key_path: serverKeyPath.trim() || null,
-    };
-
-    setIsServerSubmitting(true);
-    try {
-      const response =
-        serverModal.mode === "create"
-          ? await post("/planning/servers", body)
-          : await put(`/planning/servers/${serverModal.server.id}`, { ...body, position: serverModal.server.position });
-
-      if (!response.ok) {
-        pushToast("error", await readErrorMessage(response));
-        return;
-      }
-
-      pushToast("success", serverModal.mode === "create" ? "Server added." : "Server updated.");
-      setServerModal(null);
-      await loadData();
-    } catch {
-      pushToast("error", "Something went wrong. Please try again.");
-    } finally {
-      setIsServerSubmitting(false);
-    }
-  }
 
   // ---- Project modal helpers ------------------------------------------------
 
@@ -351,25 +266,16 @@ export default function ProjectsPage() {
   // ---- Delete ---------------------------------------------------------------
 
   async function handleConfirmDelete() {
-    if (!pendingConfirmation) return;
+    if (!pendingDelete) return;
     setIsConfirmationBusy(true);
     try {
-      if (pendingConfirmation.kind === "delete_server") {
-        const response = await del(`/planning/servers/${pendingConfirmation.server.id}`);
-        if (!response.ok) {
-          pushToast("error", await readErrorMessage(response));
-          return;
-        }
-        pushToast("success", "Server removed.");
-      } else {
-        const response = await del(`/planning/projects/${pendingConfirmation.project.id}`);
-        if (!response.ok) {
-          pushToast("error", await readErrorMessage(response));
-          return;
-        }
-        pushToast("success", "Project removed.");
+      const response = await del(`/planning/projects/${pendingDelete.id}`);
+      if (!response.ok) {
+        pushToast("error", await readErrorMessage(response));
+        return;
       }
-      setPendingConfirmation(null);
+      pushToast("success", "Project removed.");
+      setPendingDelete(null);
       await loadData();
     } catch {
       pushToast("error", "Something went wrong. Please try again.");
@@ -394,11 +300,10 @@ export default function ProjectsPage() {
       <section className="px-1">
         <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">Projects</h2>
         <p className="mt-1 max-w-2xl text-sm leading-6 sm:text-base" style={{ color: "var(--foreground-muted)" }}>
-          Register the servers you run agents on and the projects that live on them. This is the foundation for remote
-          agent sessions.
+          Codebases an agent can operate in — each optionally pinned to a{" "}
+          <Link href="/servers" className="font-semibold" style={{ color: "var(--accent)" }}>server</Link> and folder.
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm" style={{ color: "var(--foreground-muted)" }}>
-          <MetaItem icon={<ServerIcon className="h-3.5 w-3.5" aria-hidden="true" />}>{servers.length} servers</MetaItem>
           <MetaItem icon={<FolderGit2 className="h-3.5 w-3.5" aria-hidden="true" />}>{projects.length} projects</MetaItem>
         </div>
       </section>
@@ -407,70 +312,6 @@ export default function ProjectsPage() {
         <LoadingState />
       ) : (
         <>
-          {/* Servers */}
-          <section>
-            <div className="flex items-center justify-between gap-3 px-1">
-              <div>
-                <h3 className="text-xl font-semibold tracking-tight">Servers</h3>
-                <p className="mt-1 text-sm" style={{ color: "var(--foreground-muted)" }}>
-                  Machines reachable over SSH with public-key auth. No passwords are stored.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={openCreateServer}
-                className="button-primary inline-flex h-11 items-center gap-2 rounded-full px-4 text-sm font-semibold"
-              >
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                New server
-              </button>
-            </div>
-
-            {servers.length === 0 ? (
-              <div className="surface-subtle mt-4 rounded-[28px] px-6 py-10 text-center">
-                <ServerIcon className="mx-auto h-8 w-8" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" />
-                <p className="mt-3 text-sm" style={{ color: "var(--foreground-muted)" }}>
-                  No servers yet. Add the first machine to start mapping your infrastructure.
-                </p>
-              </div>
-            ) : (
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                {servers.map((server) => (
-                  <article key={server.id} className="surface-card group relative rounded-[28px] p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <h4 className="truncate text-base font-semibold">{server.name}</h4>
-                        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs" style={{ color: "var(--foreground-muted)" }}>
-                          <MetaItem icon={<Globe className="h-3.5 w-3.5" aria-hidden="true" />}>
-                            {server.host}:{server.port}
-                          </MetaItem>
-                          {server.username ? (
-                            <MetaItem icon={<Terminal className="h-3.5 w-3.5" aria-hidden="true" />}>{server.username}</MetaItem>
-                          ) : null}
-                          <MetaItem icon={<KeyRound className="h-3.5 w-3.5" aria-hidden="true" />}>
-                            {server.key_path ? server.key_path : "default key"}
-                          </MetaItem>
-                        </div>
-                      </div>
-                      <ActionMenu menuKey={`server-${server.id}`} openMenuKey={openMenuKey} onToggle={toggleMenu} adaptiveDirection>
-                        <ActionMenuItem onClick={() => { setOpenMenuKey(null); openEditServer(server); }}>
-                          <span className="inline-flex items-center gap-2">
-                            <PencilLine className="h-4 w-4" aria-hidden="true" /> Edit
-                          </span>
-                        </ActionMenuItem>
-                        <ActionMenuItem tone="danger" onClick={() => { setOpenMenuKey(null); setPendingConfirmation({ kind: "delete_server", server }); }}>
-                          <span className="inline-flex items-center gap-2">
-                            <Trash2 className="h-4 w-4" aria-hidden="true" /> Delete
-                          </span>
-                        </ActionMenuItem>
-                      </ActionMenu>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
-
           {/* Projects */}
           <section>
             <div className="flex items-center justify-between gap-3 px-1">
@@ -527,6 +368,16 @@ export default function ProjectsPage() {
                               <MetaItem icon={<HardDrive className="h-3.5 w-3.5" aria-hidden="true" />}>{project.root_path}</MetaItem>
                             ) : null}
                           </div>
+                          {project.server_id ? (
+                            <Link
+                              href="/terminals"
+                              className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold"
+                              style={{ color: "var(--accent)" }}
+                            >
+                              <SquareTerminal className="h-3.5 w-3.5" aria-hidden="true" />
+                              Open terminals
+                            </Link>
+                          ) : null}
                         </div>
                         <ActionMenu menuKey={`project-${project.id}`} openMenuKey={openMenuKey} onToggle={toggleMenu} adaptiveDirection>
                           <ActionMenuItem onClick={() => { setOpenMenuKey(null); openEditProject(project); }}>
@@ -534,7 +385,7 @@ export default function ProjectsPage() {
                               <PencilLine className="h-4 w-4" aria-hidden="true" /> Edit
                             </span>
                           </ActionMenuItem>
-                          <ActionMenuItem tone="danger" onClick={() => { setOpenMenuKey(null); setPendingConfirmation({ kind: "delete_project", project }); }}>
+                          <ActionMenuItem tone="danger" onClick={() => { setOpenMenuKey(null); setPendingDelete(project); }}>
                             <span className="inline-flex items-center gap-2">
                               <Trash2 className="h-4 w-4" aria-hidden="true" /> Delete
                             </span>
@@ -549,89 +400,6 @@ export default function ProjectsPage() {
           </section>
         </>
       )}
-
-      {/* Server modal */}
-      <Modal
-        isOpen={serverModal !== null}
-        onClose={closeServerModal}
-        title={serverModal?.mode === "edit" ? "Edit server" : "Add server"}
-        description="Connection details for an SSH-reachable machine. Authentication is public-key only."
-      >
-        <form onSubmit={handleSubmitServer} className="space-y-4">
-          <div>
-            <label htmlFor="server-name" className="text-sm font-semibold">Name</label>
-            <input
-              id="server-name"
-              value={serverName}
-              onChange={(event) => setServerName(event.target.value)}
-              className="field mt-2 rounded-2xl px-4 py-3 text-sm"
-              placeholder="prod-box-1"
-              required
-            />
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">
-            <div>
-              <label htmlFor="server-host" className="text-sm font-semibold">Host / IP</label>
-              <input
-                id="server-host"
-                value={serverHost}
-                onChange={(event) => setServerHost(event.target.value)}
-                className="field mt-2 rounded-2xl px-4 py-3 text-sm"
-                placeholder="203.0.113.10"
-                required
-              />
-            </div>
-            <div>
-              <label htmlFor="server-port" className="text-sm font-semibold">Port</label>
-              <input
-                id="server-port"
-                type="number"
-                min={1}
-                max={65535}
-                value={serverPort}
-                onChange={(event) => setServerPort(event.target.value)}
-                className="field mt-2 rounded-2xl px-4 py-3 text-sm"
-                required
-              />
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="server-username" className="text-sm font-semibold">SSH username</label>
-            <input
-              id="server-username"
-              value={serverUsername}
-              onChange={(event) => setServerUsername(event.target.value)}
-              className="field mt-2 rounded-2xl px-4 py-3 text-sm"
-              placeholder="ubuntu"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="server-key-path" className="text-sm font-semibold">Private key path</label>
-            <input
-              id="server-key-path"
-              value={serverKeyPath}
-              onChange={(event) => setServerKeyPath(event.target.value)}
-              className="field mt-2 rounded-2xl px-4 py-3 text-sm"
-              placeholder="~/.ssh/id_ed25519 (blank = default key)"
-            />
-            <p className="mt-1.5 text-xs" style={{ color: "var(--foreground-muted)" }}>
-              Path on the local machine. Leave blank to use the default SSH key. The key itself is never stored here.
-            </p>
-          </div>
-
-          <div className="flex items-center justify-end gap-2">
-            <button type="button" onClick={closeServerModal} disabled={isServerSubmitting} className="button-secondary rounded-2xl px-4 py-3 text-sm font-medium">
-              Cancel
-            </button>
-            <button type="submit" disabled={isServerSubmitting} className="button-primary rounded-2xl px-4 py-3 text-sm font-semibold">
-              {isServerSubmitting ? "Saving..." : serverModal?.mode === "edit" ? "Save server" : "Add server"}
-            </button>
-          </div>
-        </form>
-      </Modal>
 
       {/* Project modal */}
       <Modal
@@ -718,32 +486,24 @@ export default function ProjectsPage() {
 
       {/* Delete confirmation */}
       <Modal
-        isOpen={pendingConfirmation !== null}
+        isOpen={pendingDelete !== null}
         onClose={() => {
           if (isConfirmationBusy) return;
-          setPendingConfirmation(null);
+          setPendingDelete(null);
         }}
-        title={pendingConfirmation?.kind === "delete_server" ? "Remove server?" : "Remove project?"}
-        description={
-          pendingConfirmation?.kind === "delete_server"
-            ? "Projects on this server will be unlinked, not deleted."
-            : "This removes the selected project."
-        }
+        title="Remove project?"
+        description="This removes the selected project."
       >
         <div className="space-y-4">
           <p className="text-sm leading-6" style={{ color: "var(--foreground-muted)" }}>
-            {pendingConfirmation?.kind === "delete_server"
-              ? `Remove server "${pendingConfirmation.server.name}"?`
-              : pendingConfirmation?.kind === "delete_project"
-                ? `Remove project "${pendingConfirmation.project.name}"?`
-                : ""}
+            {pendingDelete ? `Remove project "${pendingDelete.name}"?` : ""}
           </p>
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <button type="button" onClick={() => setPendingConfirmation(null)} disabled={isConfirmationBusy} className="button-secondary rounded-2xl px-4 py-3 text-sm font-medium">
+            <button type="button" onClick={() => setPendingDelete(null)} disabled={isConfirmationBusy} className="button-secondary rounded-2xl px-4 py-3 text-sm font-medium">
               Cancel
             </button>
             <button type="button" onClick={() => void handleConfirmDelete()} disabled={isConfirmationBusy} className="button-danger rounded-2xl px-4 py-3 text-sm font-semibold">
-              {isConfirmationBusy ? "Removing..." : pendingConfirmation?.kind === "delete_server" ? "Remove server" : "Remove project"}
+              {isConfirmationBusy ? "Removing..." : "Remove project"}
             </button>
           </div>
         </div>

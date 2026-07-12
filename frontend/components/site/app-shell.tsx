@@ -6,6 +6,7 @@ import {
   Bot,
   BriefcaseBusiness,
   CalendarDays,
+  FolderGit2,
   History,
   LayoutGrid,
   ListTodo,
@@ -32,7 +33,7 @@ type NavItem = {
   href: string;
   label: string;
   description: string;
-  icon: "dashboard" | "tasks" | "missions" | "okrs" | "glossary" | "activity" | "agents" | "projects" | "servers" | "admin";
+  icon: "dashboard" | "tasks" | "missions" | "okrs" | "glossary" | "activity" | "agents" | "projects" | "servers" | "terminals" | "admin";
 };
 
 type FocusedTask = {
@@ -50,8 +51,9 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/missions", label: "Missions", description: "Mission map", icon: "missions" },
   { href: "/okrs", label: "OKRs", description: "Goal tracking", icon: "okrs" },
   { href: "/glossary", label: "Glossary", description: "Term mastery", icon: "glossary" },
-  { href: "/projects", label: "Projects", description: "Servers & repos", icon: "projects" },
-  { href: "/servers", label: "Servers", description: "tmux panels", icon: "servers" },
+  { href: "/servers", label: "Servers", description: "SSH machines", icon: "servers" },
+  { href: "/projects", label: "Projects", description: "Codebases", icon: "projects" },
+  { href: "/terminals", label: "Terminals", description: "tmux panels", icon: "terminals" },
   { href: "/activity", label: "Activity", description: "Timeline", icon: "activity" },
   { href: "/admin", label: "Admin", description: "Workspace controls", icon: "admin" },
 ];
@@ -90,10 +92,14 @@ function NavIcon({ icon, active }: { icon: NavItem["icon"]; active: boolean }) {
   }
 
   if (icon === "projects") {
-    return <Server aria-hidden="true" className={className} color={active ? "var(--accent)" : "var(--foreground-muted)"} />;
+    return <FolderGit2 aria-hidden="true" className={className} color={active ? "var(--accent)" : "var(--foreground-muted)"} />;
   }
 
   if (icon === "servers") {
+    return <Server aria-hidden="true" className={className} color={active ? "var(--accent)" : "var(--foreground-muted)"} />;
+  }
+
+  if (icon === "terminals") {
     return <SquareTerminal aria-hidden="true" className={className} color={active ? "var(--accent)" : "var(--foreground-muted)"} />;
   }
 

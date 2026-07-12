@@ -21,6 +21,7 @@ class PaneModel(BaseModel):
     index: int
     active: bool
     command: str
+    current_path: str = ""
 
 
 class WindowModel(BaseModel):
@@ -56,6 +57,17 @@ class ActionResponse(BaseModel):
     error: str | None = None
 
 
+class HistoryItem(BaseModel):
+    command: str
+    count: int
+
+
+class HistoryResponse(BaseModel):
+    ok: bool
+    error: str | None = None
+    items: list[HistoryItem] = []
+
+
 class SendTextRequest(BaseModel):
     target: str = Field(min_length=1, max_length=400)
     text: str = Field(max_length=8000)
@@ -78,6 +90,42 @@ async def _require_server(server_id: int, user: dict) -> dict:
     if server is None:
         raise HTTPException(status_code=404, detail="Server not found")
     return server
+
+
+def _parse_zsh_history(raw: str) -> list[str]:
+    """Turn a raw zsh history dump into a chronological list of commands.
+
+    Handles both plain lines and zsh's extended `: <ts>:<elapsed>;<command>`
+    format. Blank lines are dropped; command text is returned verbatim.
+    """
+    commands: list[str] = []
+    for line in raw.splitlines():
+        if line.startswith(":"):
+            semicolon = line.find(";")
+            if semicolon != -1:
+                line = line[semicolon + 1 :]
+        stripped = line.strip()
+        if stripped:
+            commands.append(stripped)
+    return commands
+
+
+def _rank_history(commands: list[str], limit: int) -> list[dict[str, Any]]:
+    """De-duplicate commands, ordering most-repeated first, then most-recent.
+
+    `commands` must be in chronological (oldest → newest) order. Each unique
+    command carries how many times it appears, so the UI can hint at frequency.
+    """
+    stats: dict[str, dict[str, int]] = {}
+    for index, command in enumerate(commands):
+        entry = stats.get(command)
+        if entry is None:
+            stats[command] = {"count": 1, "last": index}
+        else:
+            entry["count"] += 1
+            entry["last"] = index
+    ranked = sorted(stats.items(), key=lambda kv: (kv[1]["count"], kv[1]["last"]), reverse=True)
+    return [{"command": command, "count": entry["count"]} for command, entry in ranked[:limit]]
 
 
 def _action_result(result: dict[str, Any]) -> dict[str, Any]:
@@ -103,12 +151,27 @@ async def capture_pane(
     user: dict = Depends(require_authenticated_user),
 ):
     server = await _require_server(server_id, user)
-    result = await ssh.tmux_capture_pane(server, target, lines=lines)
+    result = await ssh.tmux_capture_pane(server, target, lines=lines, color=True)
     if not result.get("ok"):
         return {"ok": False, "error": result.get("error")}
     if result.get("exit_status") not in (0, None):
         return {"ok": False, "error": (result.get("stderr") or "").strip() or "Capture failed"}
     return {"ok": True, "text": result.get("stdout") or ""}
+
+
+@router.get("/servers/{server_id}/command-history", response_model=HistoryResponse)
+async def command_history(
+    server_id: int,
+    limit: int = Query(default=300, ge=1, le=1000),
+    user: dict = Depends(require_authenticated_user),
+):
+    """Ranked shell-command suggestions drawn from the server's zsh history."""
+    server = await _require_server(server_id, user)
+    result = await ssh.read_zsh_history(server)
+    if not result.get("ok"):
+        return {"ok": False, "error": result.get("error")}
+    commands = _parse_zsh_history(result.get("stdout") or "")
+    return {"ok": True, "items": _rank_history(commands, limit)}
 
 
 @router.post("/servers/{server_id}/send-text", response_model=ActionResponse)

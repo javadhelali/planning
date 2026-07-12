@@ -87,6 +87,7 @@ _TREE_FIELDS = [
     "#{pane_index}",
     "#{pane_active}",
     "#{pane_current_command}",
+    "#{pane_current_path}",
 ]
 
 
@@ -124,6 +125,8 @@ async def list_tmux_tree(server: dict[str, Any]) -> dict[str, Any]:
         if len(parts) < 11:
             continue
         (s_name, s_windows, s_activity, s_attached, w_index, w_name, w_active, w_panes, p_index, p_active, p_cmd) = parts[:11]
+        # pane_current_path is last; rejoin in the unlikely case a path holds a tab.
+        p_path = "\t".join(parts[11:]) if len(parts) > 11 else ""
 
         session = sessions.get(s_name)
         if session is None:
@@ -152,6 +155,7 @@ async def list_tmux_tree(server: dict[str, Any]) -> dict[str, Any]:
                 "index": _to_int(p_index),
                 "active": p_active == "1",
                 "command": p_cmd,
+                "current_path": p_path,
             }
         )
 
@@ -171,6 +175,7 @@ async def tmux_capture_pane(
     server: dict[str, Any],
     target: str,
     lines: int | None = None,
+    color: bool = False,
 ) -> dict[str, Any]:
     """Capture a pane's text.
 
@@ -178,8 +183,15 @@ async def tmux_capture_pane(
     few lines). With `lines`, adds `-S -<lines>` to include that much scrollback
     history — useful when the pane is only a few rows tall. History only exists
     for normal (non-alternate-screen) panes.
+
+    `color` adds `-e`, which preserves the pane's ANSI escape sequences
+    (colors/attributes). Only human-facing consumers (the frontend, which
+    parses them into colored output) want this. Keep it off for callers that
+    feed the text to an LLM — the raw escape codes are noise there.
     """
     command = f"tmux capture-pane -t {shlex.quote(target)} -p"
+    if color:
+        command += " -e"
     if lines and lines > 0:
         command += f" -S -{int(lines)}"
     return await run_command(server, command)
@@ -207,3 +219,19 @@ async def tmux_send_key(server: dict[str, Any], session: str, key: str) -> dict[
 async def tmux_kill_session(server: dict[str, Any], session: str) -> dict[str, Any]:
     """Kill a tmux session."""
     return await run_command(server, f"tmux kill-session -t {shlex.quote(session)}")
+
+
+async def read_zsh_history(server: dict[str, Any], limit: int = 3000) -> dict[str, Any]:
+    """Read the most recent `limit` lines of the server's zsh history file.
+
+    Prefers ~/.zsh_history, falling back to ~/.histfile. Returns the raw file
+    text (which may be in zsh's extended `: <ts>:<elapsed>;<command>` format);
+    parsing, de-duplication and ranking happen in the caller. Best-effort: a
+    missing file yields empty stdout rather than an error.
+    """
+    n = max(1, int(limit))
+    command = (
+        'f="$HOME/.zsh_history"; [ -f "$f" ] || f="$HOME/.histfile"; '
+        f'tail -n {n} "$f" 2>/dev/null || true'
+    )
+    return await run_command(server, command)
