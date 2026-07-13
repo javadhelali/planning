@@ -12,20 +12,19 @@ import {
   FolderGit2,
   History,
   Loader2,
+  LogOut,
   Mic,
   Plus,
   RotateCw,
   Send,
   Server as ServerIcon,
+  Sparkles,
   TerminalSquare,
-  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { del, get, hasPlanningSession, post } from "../../utilities/api";
-import { ActionMenu, ActionMenuItem } from "@/components/site/action-menu";
-import Modal from "@/components/site/modal";
+import { get, hasPlanningSession, post } from "../../utilities/api";
 import ToastStack from "@/components/site/toast-stack";
 import AnsiText from "@/components/site/ansi-text";
 
@@ -60,6 +59,10 @@ const QUICK_KEYS: Array<{ key: string; label: string; icon?: typeof ArrowUp }> =
   { key: "q", label: "q" },
   { key: "C-c", label: "Ctrl-C", icon: CircleStop },
 ];
+
+// Handy Claude Code slash commands, sent to the active pane on click. Interactive
+// ones (like /resume) open a picker you then drive with the arrow quick keys.
+const CLAUDE_COMMANDS = ["/clear", "/resume", "/compact", "/context", "/model", "/help"];
 
 function timeAgo(epochSeconds: number): string {
   if (!epochSeconds) return "unknown";
@@ -147,7 +150,9 @@ function matchProject(path: string | null | undefined, projects: Project[], serv
 
 // Flatten a server's sessions into panes (terminals) grouped by project. Each
 // pane is placed by its own cwd, so a session with panes in different projects
-// splits across groups. Unmatched panes land in "Other" (always last).
+// splits across groups. Every project on the server gets a group even with no
+// panes, so you can still open a terminal in it. Unmatched panes land in
+// "Other" (always last).
 function buildPaneGroups(sessions: Session[], projects: Project[], serverId: number): PaneGroup[] {
   const order: string[] = [];
   const map = new Map<string, PaneGroup>();
@@ -160,6 +165,10 @@ function buildPaneGroups(sessions: Session[], projects: Project[], serverId: num
     }
     return group;
   };
+  // Seed a group for each of the server's projects so empty ones still show.
+  for (const project of projects) {
+    if (project.server_id === serverId) ensure(`p-${project.id}`, project.name, project);
+  }
   for (const session of sessions) {
     const totalPanes = session.windows.reduce((sum, win) => sum + win.panes.length, 0);
     for (const win of session.windows) {
@@ -204,16 +213,11 @@ export default function TerminalsPage() {
   const [isLive, setIsLive] = useState(true);
   const [historyLines, setHistoryLines] = useState(500);
   const [message, setMessage] = useState("");
-  const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
 
   const [collapsedNodes, setCollapsedNodes] = useState<Set<string>>(() => new Set());
 
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [createServerId, setCreateServerId] = useState<number | null>(null);
-  const [newSessionName, setNewSessionName] = useState("");
-  const [newCommand, setNewCommand] = useState("bash");
-  const [newCwd, setNewCwd] = useState("");
-  const [isCreating, setIsCreating] = useState(false);
+  const [exitArmed, setExitArmed] = useState(false);
+  const exitArmTimer = useRef<number | null>(null);
 
   const pollRef = useRef<number | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
@@ -467,6 +471,12 @@ export default function TerminalsPage() {
       setSnapshot("");
       setSnapshotError(null);
     }
+    // Reset the exit confirmation whenever the active pane changes.
+    setExitArmed(false);
+    if (exitArmTimer.current) {
+      window.clearTimeout(exitArmTimer.current);
+      exitArmTimer.current = null;
+    }
   }, [target]);
 
   // A new pane starts pinned to the bottom (latest output).
@@ -485,18 +495,6 @@ export default function TerminalsPage() {
   useEffect(() => {
     autosizeComposer();
   }, [message]);
-
-  // Close the action menu on an outside click.
-  useEffect(() => {
-    if (!openMenuKey) return;
-    function onDocClick(event: MouseEvent) {
-      const el = event.target as HTMLElement;
-      if (el.closest("[data-action-menu-root]")) return;
-      setOpenMenuKey(null);
-    }
-    document.addEventListener("click", onDocClick);
-    return () => document.removeEventListener("click", onDocClick);
-  }, [openMenuKey]);
 
   function onTerminalScroll() {
     const el = terminalRef.current;
@@ -521,11 +519,9 @@ export default function TerminalsPage() {
     }
   }
 
-  async function sendMessage() {
-    if (selectedServerId === null || !target || !message.trim()) return;
-    const text = message;
+  async function sendText(text: string) {
+    if (selectedServerId === null || !target || !text.trim()) return;
     const serverId = selectedServerId;
-    setMessage("");
     try {
       const response = await post(`/planning/servers/${serverId}/send-text`, { target, text, enter: true });
       const data = await response.json().catch(() => ({ ok: false }));
@@ -541,46 +537,36 @@ export default function TerminalsPage() {
     }
   }
 
-  function openCreateForServer(server: Server) {
-    setCreateServerId(server.id);
-    setNewSessionName("");
-    setNewCommand("bash");
-    setNewCwd("");
-    setIsCreateOpen(true);
+  function sendMessage() {
+    if (!message.trim()) return;
+    const text = message;
+    setMessage("");
+    void sendText(text);
   }
 
-  function openCreateForProject(project: Project) {
-    setCreateServerId(project.server_id);
-    setNewSessionName(project.name.replace(/[^a-zA-Z0-9_-]/g, "-"));
-    setNewCommand("bash");
-    setNewCwd(project.root_path ?? "");
-    setIsCreateOpen(true);
+  // Pick a session name not already in use on the server (tmux names must be unique).
+  function uniqueSessionName(serverId: number, base: string): string {
+    const existing = new Set((serverTrees[serverId] ?? []).map((session) => session.name));
+    const clean = base.replace(/[^a-zA-Z0-9_-]/g, "-").replace(/^-+|-+$/g, "") || "term";
+    if (!existing.has(clean)) return clean;
+    let index = 2;
+    while (existing.has(`${clean}-${index}`)) index += 1;
+    return `${clean}-${index}`;
   }
 
-  async function createSession(event: React.FormEvent) {
-    event.preventDefault();
-    if (createServerId === null) return;
-    const serverId = createServerId;
-    const created = newSessionName.trim();
-    setIsCreating(true);
+  // Spin up a detached tmux session, refresh the tree, and jump to its pane.
+  // No command is sent, so tmux launches the server's default shell (usually zsh).
+  async function createTerminal(serverId: number, name: string, cwd: string | null) {
     try {
-      const response = await post(`/planning/servers/${serverId}/sessions`, {
-        name: created,
-        command: newCommand.trim() || "bash",
-        cwd: newCwd.trim() || null,
-      });
+      const response = await post(`/planning/servers/${serverId}/sessions`, { name, cwd });
       const data = await response.json().catch(() => ({ ok: false }));
       if (!response.ok || !data.ok) {
         pushToast("error", data?.error ?? "Could not create session");
         return;
       }
-      pushToast("success", `Created terminal "${created}"`);
-      setIsCreateOpen(false);
-      setNewSessionName("");
-      setNewCommand("bash");
-      setNewCwd("");
+      pushToast("success", `Created terminal "${name}"`);
       const sessions = await loadTree(serverId);
-      const match = sessions.find((session) => session.name === created);
+      const match = sessions.find((session) => session.name === name);
       if (match) {
         const win = match.windows.find((w) => w.active) ?? match.windows[0];
         const pane = win?.panes.find((p) => p.active) ?? win?.panes[0];
@@ -588,35 +574,46 @@ export default function TerminalsPage() {
       }
     } catch {
       pushToast("error", "Could not create session");
-    } finally {
-      setIsCreating(false);
     }
   }
 
-  async function killSession(name: string) {
-    if (selectedServerId === null) return;
-    if (!window.confirm(`Kill tmux session "${name}"? Anything running in it will stop.`)) return;
-    const serverId = selectedServerId;
-    try {
-      const response = await del(`/planning/servers/${serverId}/sessions/${encodeURIComponent(name)}`);
-      const data = await response.json().catch(() => ({ ok: false }));
-      if (!response.ok || !data.ok) {
-        pushToast("error", data?.error ?? "Could not kill session");
-        return;
-      }
-      pushToast("success", `Killed session "${name}"`);
-      await loadTree(serverId);
-    } catch {
-      pushToast("error", "Could not kill session");
+  function openTerminalForServer(server: Server) {
+    void createTerminal(server.id, uniqueSessionName(server.id, "term"), null);
+  }
+
+  function openTerminalForProject(project: Project) {
+    if (project.server_id === null) return;
+    void createTerminal(project.server_id, uniqueSessionName(project.server_id, project.name), project.root_path ?? null);
+  }
+
+  function disarmExit() {
+    if (exitArmTimer.current) {
+      window.clearTimeout(exitArmTimer.current);
+      exitArmTimer.current = null;
     }
+    setExitArmed(false);
+  }
+
+  // Exit the active pane by sending Ctrl-D (EOF) to its shell, then refresh the
+  // server's terminal list so the closed pane/session drops out of the tree.
+  // The first click arms the button; a second click within a few seconds confirms.
+  async function exitPane() {
+    if (selectedServerId === null || !target) return;
+    if (!exitArmed) {
+      setExitArmed(true);
+      exitArmTimer.current = window.setTimeout(() => disarmExit(), 3000);
+      return;
+    }
+    disarmExit();
+    const serverId = selectedServerId;
+    await sendKey("C-d");
+    window.setTimeout(() => void loadTree(serverId), 500);
   }
 
   // --- render ---------------------------------------------------------------
 
   if (authState === "checking") return <div className="skeleton h-64 rounded-[28px]" />;
   if (authState === "guest") return <GuestHome />;
-
-  const createServer = servers.find((server) => server.id === createServerId) ?? null;
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col gap-3">
@@ -663,7 +660,7 @@ export default function TerminalsPage() {
                       <span className="min-w-0 flex-1 truncate text-sm font-semibold" title={`${server.name} · ${server.host}`}>{server.name}</span>
                       <button
                         type="button"
-                        onClick={() => openCreateForServer(server)}
+                        onClick={() => openTerminalForServer(server)}
                         className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border"
                         style={{ borderColor: softBorder, color: "var(--foreground-muted)" }}
                         title={`New terminal on ${server.name} (home directory)`}
@@ -675,7 +672,7 @@ export default function TerminalsPage() {
                     {!srvCollapsed ? (
                       error ? (
                         <p className="px-2 py-1.5 pl-8 text-xs" style={{ color: "var(--danger)" }}>{error}</p>
-                      ) : sessions.length === 0 ? (
+                      ) : groups.length === 0 ? (
                         <p className="px-2 py-1.5 pl-8 text-xs" style={{ color: "var(--foreground-muted)" }}>
                           {treesLoading ? "Loading…" : "No terminals here."}
                         </p>
@@ -698,7 +695,7 @@ export default function TerminalsPage() {
                                 {group.project ? (
                                   <button
                                     type="button"
-                                    onClick={() => openCreateForProject(group.project!)}
+                                    onClick={() => openTerminalForProject(group.project!)}
                                     className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border"
                                     style={{ borderColor: softBorder, color: "var(--foreground-muted)" }}
                                     title={`New terminal in ${group.project.name}${group.project.root_path ? ` (${group.project.root_path})` : ""}`}
@@ -707,6 +704,12 @@ export default function TerminalsPage() {
                                   </button>
                                 ) : null}
                               </div>
+
+                              {!groupCollapsed && group.panes.length === 0 ? (
+                                <p className="py-1 pl-12 pr-2 text-[11px]" style={{ color: "var(--foreground-muted)" }}>
+                                  {group.project ? "No terminals yet — use +" : "No terminals."}
+                                </p>
+                              ) : null}
 
                               {!groupCollapsed
                                 ? group.panes.map((ref) => {
@@ -799,16 +802,6 @@ export default function TerminalsPage() {
                     >
                       <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
                     </button>
-                    <ActionMenu
-                      menuKey="session-actions"
-                      openMenuKey={openMenuKey}
-                      onToggle={(key) => setOpenMenuKey((current) => (current === key ? null : key))}
-                      adaptiveDirection
-                    >
-                      <ActionMenuItem tone="danger" onClick={() => { setOpenMenuKey(null); void killSession(selectedSession.name); }}>
-                        <span className="inline-flex items-center gap-2"><Trash2 className="h-4 w-4" aria-hidden="true" /> Kill session</span>
-                      </ActionMenuItem>
-                    </ActionMenu>
                   </div>
                 </div>
 
@@ -846,6 +839,37 @@ export default function TerminalsPage() {
                       </button>
                     );
                   })}
+
+                  <span className="mx-1 h-5 w-px shrink-0" style={{ backgroundColor: softBorder }} aria-hidden="true" />
+                  <Sparkles className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--accent)" }} aria-hidden="true" />
+                  {CLAUDE_COMMANDS.map((command) => (
+                    <button
+                      key={command}
+                      type="button"
+                      onClick={() => void sendText(command)}
+                      className="inline-flex h-8 items-center rounded-lg border px-2 font-mono text-xs font-medium"
+                      style={{ borderColor: "color-mix(in srgb, var(--accent) 40%, transparent)", color: "var(--accent)" }}
+                      title={`Run ${command} in Claude Code`}
+                    >
+                      {command}
+                    </button>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={() => void exitPane()}
+                    onBlur={() => exitArmed && disarmExit()}
+                    className="ml-auto inline-flex h-8 items-center gap-1 rounded-lg border px-2 text-xs font-medium transition"
+                    style={
+                      exitArmed
+                        ? { borderColor: "var(--danger)", backgroundColor: "var(--danger)", color: "var(--background)" }
+                        : { borderColor: "color-mix(in srgb, var(--danger) 40%, transparent)", color: "var(--danger)" }
+                    }
+                    title="Exit this terminal (Ctrl-D) — closes the pane"
+                  >
+                    <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
+                    {exitArmed ? "Click to confirm" : "Exit"}
+                  </button>
                 </div>
 
                 {/* Composer */}
@@ -950,38 +974,6 @@ export default function TerminalsPage() {
           </aside>
         </div>
       )}
-
-      {/* New terminal modal */}
-      <Modal
-        isOpen={isCreateOpen}
-        onClose={() => { if (!isCreating) setIsCreateOpen(false); }}
-        title="New terminal"
-        description={createServer ? `Start a detached tmux session on ${createServer.name}.` : "Start a detached tmux session."}
-      >
-        <form onSubmit={createSession} className="space-y-4">
-          <div>
-            <label htmlFor="new-session-name" className="text-sm font-semibold">Session name</label>
-            <input id="new-session-name" value={newSessionName} onChange={(event) => setNewSessionName(event.target.value)} className="field mt-2 rounded-2xl px-4 py-3 font-mono text-sm" placeholder="deploy" required />
-          </div>
-          <div>
-            <label htmlFor="new-session-command" className="text-sm font-semibold">Command</label>
-            <input id="new-session-command" value={newCommand} onChange={(event) => setNewCommand(event.target.value)} className="field mt-2 rounded-2xl px-4 py-3 font-mono text-sm" placeholder="bash" />
-            <p className="mt-1.5 text-xs" style={{ color: "var(--foreground-muted)" }}>What runs in the pane. Leave as a shell, or run something directly (e.g. <span className="font-mono">./deploy.sh</span>).</p>
-          </div>
-          <div>
-            <label htmlFor="new-session-cwd" className="text-sm font-semibold">Working directory</label>
-            <input id="new-session-cwd" value={newCwd} onChange={(event) => setNewCwd(event.target.value)} className="field mt-2 rounded-2xl px-4 py-3 font-mono text-sm" placeholder="Home directory (leave blank)" />
-            <p className="mt-1.5 text-xs" style={{ color: "var(--foreground-muted)" }}>Where the terminal opens. Blank = the server&apos;s home directory.</p>
-          </div>
-          <div className="flex items-center justify-end gap-2">
-            <button type="button" onClick={() => setIsCreateOpen(false)} disabled={isCreating} className="button-secondary rounded-2xl px-4 py-3 text-sm font-medium">Cancel</button>
-            <button type="submit" disabled={isCreating} className="button-primary inline-flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold">
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              {isCreating ? "Creating…" : "Create terminal"}
-            </button>
-          </div>
-        </form>
-      </Modal>
     </div>
   );
 }

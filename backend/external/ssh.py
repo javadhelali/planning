@@ -56,16 +56,21 @@ async def run_command(server: dict[str, Any], command: str, timeout: int = 30) -
 async def tmux_new_session(
     server: dict[str, Any],
     session: str,
-    command: str,
+    command: str = "",
     cwd: str | None = None,
     width: int = 200,
     height: int = 50,
 ) -> dict[str, Any]:
-    """Create a detached tmux session at a fixed size running `command`."""
+    """Create a detached tmux session at a fixed size.
+
+    With `command` empty, tmux launches the server's default shell (usually
+    zsh); otherwise it runs `command` in the pane.
+    """
     parts = ["tmux", "new-session", "-d", "-s", shlex.quote(session), "-x", str(width), "-y", str(height)]
     if cwd:
         parts += ["-c", shlex.quote(cwd)]
-    parts.append(shlex.quote(command))
+    if command:
+        parts.append(shlex.quote(command))
     return await run_command(server, " ".join(parts))
 
 

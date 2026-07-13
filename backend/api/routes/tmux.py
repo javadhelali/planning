@@ -81,7 +81,8 @@ class SendKeyRequest(BaseModel):
 
 class CreateSessionRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    command: str = Field(default="bash", max_length=1000)
+    # Empty (the default) launches the server's default shell — usually zsh.
+    command: str = Field(default="", max_length=1000)
     cwd: str | None = Field(default=None, max_length=1024)
 
 
@@ -203,7 +204,7 @@ async def create_session(
     user: dict = Depends(require_authenticated_user),
 ):
     server = await _require_server(server_id, user)
-    command = payload.command.strip() or "bash"
+    command = payload.command.strip()
     cwd = (payload.cwd or "").strip() or None
     result = await ssh.tmux_new_session(server, payload.name.strip(), command, cwd=cwd)
     return _action_result(result)
