@@ -92,6 +92,7 @@ _TREE_FIELDS = [
     "#{pane_index}",
     "#{pane_active}",
     "#{pane_current_command}",
+    "#{pane_title}",
     "#{pane_current_path}",
 ]
 
@@ -127,11 +128,11 @@ async def list_tmux_tree(server: dict[str, Any]) -> dict[str, Any]:
         if not line.strip():
             continue
         parts = line.split("\t")
-        if len(parts) < 11:
+        if len(parts) < 12:
             continue
-        (s_name, s_windows, s_activity, s_attached, w_index, w_name, w_active, w_panes, p_index, p_active, p_cmd) = parts[:11]
+        (s_name, s_windows, s_activity, s_attached, w_index, w_name, w_active, w_panes, p_index, p_active, p_cmd, p_title) = parts[:12]
         # pane_current_path is last; rejoin in the unlikely case a path holds a tab.
-        p_path = "\t".join(parts[11:]) if len(parts) > 11 else ""
+        p_path = "\t".join(parts[12:]) if len(parts) > 12 else ""
 
         session = sessions.get(s_name)
         if session is None:
@@ -160,6 +161,7 @@ async def list_tmux_tree(server: dict[str, Any]) -> dict[str, Any]:
                 "index": _to_int(p_index),
                 "active": p_active == "1",
                 "command": p_cmd,
+                "title": p_title,
                 "current_path": p_path,
             }
         )

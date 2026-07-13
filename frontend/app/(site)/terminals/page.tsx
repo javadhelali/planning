@@ -8,17 +8,24 @@ import {
   CircleStop,
   ChevronDown,
   ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Clock,
+  Cog,
   CornerDownLeft,
+  FileText,
   FolderGit2,
+  GitBranch,
+  HardDrive,
   History,
   Loader2,
   LogOut,
   Mic,
-  Plus,
   RotateCw,
   Send,
   Server as ServerIcon,
   Sparkles,
+  Terminal,
   TerminalSquare,
 } from "lucide-react";
 import Link from "next/link";
@@ -32,7 +39,7 @@ type AuthState = "checking" | "authenticated" | "guest";
 
 type Server = { id: number; name: string; host: string; port: number };
 
-type Pane = { index: number; active: boolean; command: string; current_path: string };
+type Pane = { index: number; active: boolean; command: string; title: string; current_path: string };
 type Win = { index: number; name: string; active: boolean; panes_count: number; panes: Pane[] };
 type Session = { name: string; windows_count: number; activity: number; attached: boolean; windows: Win[] };
 
@@ -42,7 +49,23 @@ type HistoryItem = { command: string; count: number };
 
 type ToastMessage = { id: number; type: "success" | "error"; message: string };
 
+// Server overview (services / cronjobs / disk).
+type ServiceInfo = { name: string; state: string; description: string };
+type DiskInfo = { filesystem: string; size: string; used: string; avail: string; use_percent: string; mounted_on: string };
+type ServerOverview = { services: ServiceInfo[]; cronjobs: string[]; disk: DiskInfo[] };
+
+// Project overview (AGENTS.md + git changes).
+type ChangedFile = { status: string; path: string };
+type ProjectOverview = { has_root: boolean; is_git: boolean; agents_md: string | null; changed_files: ChangedFile[] };
+
+// What the main panel shows: the live terminal, or a server/project overview.
+type PanelView =
+  | { kind: "terminal" }
+  | { kind: "server"; serverId: number }
+  | { kind: "project"; projectId: number };
+
 // One terminal (tmux pane) in the tree, plus the display label to show for it.
+// `label` is the human title (pane title, falling back to the session name).
 type PaneRef = { session: Session; win: Win; pane: Pane; target: string; label: string };
 type PaneGroup = { key: string; label: string; project: Project | null; panes: PaneRef[] };
 
@@ -78,17 +101,6 @@ async function readError(response: Response) {
   const payload = await response.json().catch(() => ({}));
   if (typeof payload?.detail === "string") return payload.detail;
   return `Request failed (${response.status})`;
-}
-
-function CommandBadge({ command }: { command: string }) {
-  return (
-    <span
-      className="inline-flex items-center rounded-full px-2 py-0.5 font-mono text-[11px]"
-      style={{ backgroundColor: "color-mix(in srgb, var(--background-elevated) 90%, transparent)", color: "var(--foreground-muted)" }}
-    >
-      {command || "?"}
-    </span>
-  );
 }
 
 function GuestHome() {
@@ -170,13 +182,13 @@ function buildPaneGroups(sessions: Session[], projects: Project[], serverId: num
     if (project.server_id === serverId) ensure(`p-${project.id}`, project.name, project);
   }
   for (const session of sessions) {
-    const totalPanes = session.windows.reduce((sum, win) => sum + win.panes.length, 0);
     for (const win of session.windows) {
       for (const pane of win.panes) {
         const project = matchProject(pane.current_path, projects, serverId);
         const group = ensure(project ? `p-${project.id}` : "other", project ? project.name : "Other", project);
         const target = `${session.name}:${win.index}.${pane.index}`;
-        group.panes.push({ session, win, pane, target, label: totalPanes > 1 ? target : session.name });
+        const label = pane.title?.trim() || session.name;
+        group.panes.push({ session, win, pane, target, label });
       }
     }
   }
@@ -184,6 +196,226 @@ function buildPaneGroups(sessions: Session[], projects: Project[], serverId: num
   const other = map.get("other");
   if (other) groups.push(other);
   return groups;
+}
+
+// Colour a git porcelain status code: added=green, deleted=red, modified/renamed=accent.
+function gitStatusColor(status: string): string {
+  if (status.includes("A")) return "var(--success)";
+  if (status.includes("D")) return "var(--danger)";
+  if (status.includes("M") || status.includes("R")) return "var(--accent)";
+  return "var(--foreground-muted)";
+}
+
+const panelHeaderBorder = { borderColor: "color-mix(in srgb, var(--card-border) 60%, transparent)" };
+
+// Server overview panel: disk usage, running services, and the user's cronjobs.
+function ServerOverviewPanel({
+  server,
+  overview,
+  loading,
+  error,
+  onRefresh,
+}: {
+  server: Server | null;
+  overview: ServerOverview | null;
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+}) {
+  return (
+    <section className="surface-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[24px] lg:col-span-2">
+      <div className="flex items-center gap-2 border-b px-4 py-2.5" style={panelHeaderBorder}>
+        <ServerIcon className="h-4 w-4 shrink-0" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" />
+        <span className="shrink-0 text-sm font-semibold">{server?.name ?? "Server"}</span>
+        {server ? <span className="min-w-0 truncate text-xs" style={{ color: "var(--foreground-muted)" }}>{server.host}</span> : null}
+        <button
+          type="button"
+          onClick={onRefresh}
+          className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-full border"
+          style={{ borderColor: softBorder, color: "var(--foreground-muted)" }}
+          title="Refresh overview"
+        >
+          <RotateCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} aria-hidden="true" />
+        </button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-auto p-4">
+        {loading && !overview ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-7 w-7 animate-spin" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" />
+          </div>
+        ) : error ? (
+          <p className="text-sm" style={{ color: "var(--danger)" }}>{error}</p>
+        ) : overview ? (
+          <div className="space-y-6">
+            {/* Disk usage */}
+            <div>
+              <h3 className="mb-2 inline-flex items-center gap-2 text-sm font-semibold">
+                <HardDrive className="h-4 w-4" style={{ color: "var(--accent)" }} aria-hidden="true" /> Disk usage
+              </h3>
+              {overview.disk.length === 0 ? (
+                <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>No disk information.</p>
+              ) : (
+                <div className="space-y-2">
+                  {overview.disk.map((disk) => {
+                    const pct = parseInt(disk.use_percent, 10) || 0;
+                    return (
+                      <div key={`${disk.mounted_on}-${disk.filesystem}`} className="rounded-xl border px-3 py-2" style={{ borderColor: softBorder }}>
+                        <div className="flex items-center justify-between gap-2 text-xs">
+                          <span className="truncate font-mono font-semibold">{disk.mounted_on}</span>
+                          <span className="shrink-0" style={{ color: "var(--foreground-muted)" }}>{disk.used} / {disk.size} · {disk.avail} free</span>
+                        </div>
+                        <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: "color-mix(in srgb, var(--foreground-muted) 20%, transparent)" }}>
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: pct >= 90 ? "var(--danger)" : "var(--accent)" }} />
+                        </div>
+                        <div className="mt-1 flex items-center justify-between text-[10px]" style={{ color: "var(--foreground-muted)" }}>
+                          <span className="min-w-0 truncate font-mono">{disk.filesystem}</span>
+                          <span className="shrink-0">{disk.use_percent}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Running services */}
+            <div>
+              <h3 className="mb-2 inline-flex items-center gap-2 text-sm font-semibold">
+                <Cog className="h-4 w-4" style={{ color: "var(--accent)" }} aria-hidden="true" /> Running services
+                <span className="text-xs font-normal" style={{ color: "var(--foreground-muted)" }}>({overview.services.length})</span>
+              </h3>
+              {overview.services.length === 0 ? (
+                <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>No running services found.</p>
+              ) : (
+                <ul className="divide-y overflow-hidden rounded-xl border" style={{ borderColor: softBorder }}>
+                  {overview.services.map((service) => (
+                    <li key={service.name} className="flex items-center gap-2 px-3 py-2">
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: "var(--success)" }} aria-hidden="true" />
+                      <span className="shrink-0 font-mono text-xs font-semibold">{service.name}</span>
+                      <span className="min-w-0 flex-1 truncate text-xs" style={{ color: "var(--foreground-muted)" }} title={service.description}>{service.description}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* Cronjobs */}
+            <div>
+              <h3 className="mb-2 inline-flex items-center gap-2 text-sm font-semibold">
+                <Clock className="h-4 w-4" style={{ color: "var(--accent)" }} aria-hidden="true" /> Cronjobs
+              </h3>
+              {overview.cronjobs.length === 0 ? (
+                <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>No cronjobs for this user.</p>
+              ) : (
+                <ul className="space-y-1 rounded-xl border p-2" style={{ borderColor: softBorder }}>
+                  {overview.cronjobs.map((job, index) => (
+                    <li
+                      key={`${index}-${job}`}
+                      className="truncate rounded px-2 py-1 font-mono text-xs"
+                      style={{ backgroundColor: "color-mix(in srgb, var(--background-elevated) 90%, transparent)" }}
+                      title={job}
+                    >
+                      {job}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+// Project overview panel: the repo's AGENTS.md and its changed files (if a git repo).
+function ProjectOverviewPanel({
+  project,
+  overview,
+  loading,
+  error,
+  onRefresh,
+}: {
+  project: Project | null;
+  overview: ProjectOverview | null;
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+}) {
+  return (
+    <section className="surface-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[24px] lg:col-span-2">
+      <div className="flex items-center gap-2 border-b px-4 py-2.5" style={panelHeaderBorder}>
+        <FolderGit2 className="h-4 w-4 shrink-0" style={{ color: "var(--accent)" }} aria-hidden="true" />
+        <span className="shrink-0 text-sm font-semibold">{project?.name ?? "Project"}</span>
+        {project?.root_path ? <span className="min-w-0 truncate font-mono text-xs" style={{ color: "var(--foreground-muted)" }}>{project.root_path}</span> : null}
+        <button
+          type="button"
+          onClick={onRefresh}
+          className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-full border"
+          style={{ borderColor: softBorder, color: "var(--foreground-muted)" }}
+          title="Refresh overview"
+        >
+          <RotateCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} aria-hidden="true" />
+        </button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-auto p-4">
+        {loading && !overview ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-7 w-7 animate-spin" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" />
+          </div>
+        ) : error ? (
+          <p className="text-sm" style={{ color: "var(--danger)" }}>{error}</p>
+        ) : !overview ? null : !overview.has_root ? (
+          <p className="text-sm" style={{ color: "var(--foreground-muted)" }}>
+            No root path set for this project. Add one to see its AGENTS.md and git changes.
+          </p>
+        ) : (
+          <div className="space-y-6">
+            {/* AGENTS.md */}
+            <div>
+              <h3 className="mb-2 inline-flex items-center gap-2 text-sm font-semibold">
+                <FileText className="h-4 w-4" style={{ color: "var(--accent)" }} aria-hidden="true" /> AGENTS.md
+              </h3>
+              {overview.agents_md ? (
+                <pre
+                  className="max-h-[46vh] overflow-auto whitespace-pre-wrap rounded-xl border p-3 text-xs leading-5"
+                  style={{ borderColor: softBorder, fontFamily: "var(--font-mono)" }}
+                >
+                  {overview.agents_md}
+                </pre>
+              ) : (
+                <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>No AGENTS.md in the project root.</p>
+              )}
+            </div>
+
+            {/* Git changes */}
+            <div>
+              <h3 className="mb-2 inline-flex items-center gap-2 text-sm font-semibold">
+                <GitBranch className="h-4 w-4" style={{ color: "var(--accent)" }} aria-hidden="true" /> Changed files
+                {overview.is_git ? <span className="text-xs font-normal" style={{ color: "var(--foreground-muted)" }}>({overview.changed_files.length})</span> : null}
+              </h3>
+              {!overview.is_git ? (
+                <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>Not a git repository.</p>
+              ) : overview.changed_files.length === 0 ? (
+                <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>Working tree clean.</p>
+              ) : (
+                <ul className="divide-y overflow-hidden rounded-xl border" style={{ borderColor: softBorder }}>
+                  {overview.changed_files.map((file) => (
+                    <li key={file.path} className="flex items-center gap-2 px-3 py-1.5">
+                      <span className="w-6 shrink-0 text-center font-mono text-[11px] font-bold" style={{ color: gitStatusColor(file.status) }}>{file.status}</span>
+                      <span className="min-w-0 flex-1 truncate font-mono text-xs" title={file.path}>{file.path}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
 }
 
 export default function TerminalsPage() {
@@ -208,6 +440,12 @@ export default function TerminalsPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
 
   const [projects, setProjects] = useState<Project[]>([]);
+
+  const [panelView, setPanelView] = useState<PanelView>({ kind: "terminal" });
+  const [serverOverview, setServerOverview] = useState<ServerOverview | null>(null);
+  const [projectOverview, setProjectOverview] = useState<ProjectOverview | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isLive, setIsLive] = useState(true);
@@ -281,6 +519,15 @@ export default function TerminalsPage() {
     setSelectedSessionName(sessionName);
     setSelectedWindowIndex(windowIndex);
     setSelectedPaneIndex(paneIndex);
+    setPanelView({ kind: "terminal" });
+  }
+
+  function showServerOverview(serverId: number) {
+    setPanelView({ kind: "server", serverId });
+  }
+
+  function showProjectOverview(projectId: number) {
+    setPanelView({ kind: "project", projectId });
   }
 
   function toggleNode(key: string) {
@@ -288,6 +535,50 @@ export default function TerminalsPage() {
       const next = new Set(current);
       if (next.has(key)) next.delete(key);
       else next.add(key);
+      return next;
+    });
+  }
+
+  // All collapsible node keys in the tree, split by level.
+  function allNodeKeys(): { serverKeys: string[]; groupKeys: string[] } {
+    const serverKeys: string[] = [];
+    const groupKeys: string[] = [];
+    for (const server of servers) {
+      const srvKey = `srv-${server.id}`;
+      serverKeys.push(srvKey);
+      for (const group of buildPaneGroups(serverTrees[server.id] ?? [], projects, server.id)) {
+        groupKeys.push(`${srvKey}/${group.key}`);
+      }
+    }
+    return { serverKeys, groupKeys };
+  }
+
+  // Two-step collapse: first click hides terminals (collapse projects), the
+  // second hides projects too (collapse servers).
+  function collapseAll() {
+    const { serverKeys, groupKeys } = allNodeKeys();
+    setCollapsedNodes((current) => {
+      const next = new Set(current);
+      if (!groupKeys.every((key) => next.has(key))) {
+        groupKeys.forEach((key) => next.add(key));
+      } else {
+        serverKeys.forEach((key) => next.add(key));
+      }
+      return next;
+    });
+  }
+
+  // Two-step expand (inverse): first click reveals projects (open servers), the
+  // second reveals terminals too (open projects).
+  function expandAll() {
+    const { serverKeys, groupKeys } = allNodeKeys();
+    setCollapsedNodes((current) => {
+      const next = new Set(current);
+      if (serverKeys.some((key) => next.has(key))) {
+        serverKeys.forEach((key) => next.delete(key));
+      } else {
+        groupKeys.forEach((key) => next.delete(key));
+      }
       return next;
     });
   }
@@ -377,6 +668,51 @@ export default function TerminalsPage() {
     await Promise.all([loadAllTrees(list), loadProjects()]);
   }, [loadServers, loadAllTrees, loadProjects]);
 
+  const loadServerOverview = useCallback(async (serverId: number) => {
+    setOverviewLoading(true);
+    setOverviewError(null);
+    try {
+      const response = await get(`/planning/servers/${serverId}/overview`);
+      const data = await response.json().catch(() => ({ ok: false }));
+      if (!response.ok || !data.ok) {
+        setServerOverview(null);
+        setOverviewError(data?.error ?? "Could not load server overview.");
+        return;
+      }
+      setServerOverview({ services: data.services ?? [], cronjobs: data.cronjobs ?? [], disk: data.disk ?? [] });
+    } catch {
+      setServerOverview(null);
+      setOverviewError("Could not reach the server.");
+    } finally {
+      setOverviewLoading(false);
+    }
+  }, []);
+
+  const loadProjectOverview = useCallback(async (projectId: number) => {
+    setOverviewLoading(true);
+    setOverviewError(null);
+    try {
+      const response = await get(`/planning/projects/${projectId}/overview`);
+      const data = await response.json().catch(() => ({ ok: false }));
+      if (!response.ok || !data.ok) {
+        setProjectOverview(null);
+        setOverviewError(data?.error ?? "Could not load project overview.");
+        return;
+      }
+      setProjectOverview({
+        has_root: !!data.has_root,
+        is_git: !!data.is_git,
+        agents_md: data.agents_md ?? null,
+        changed_files: data.changed_files ?? [],
+      });
+    } catch {
+      setProjectOverview(null);
+      setOverviewError("Could not reach the server.");
+    } finally {
+      setOverviewLoading(false);
+    }
+  }, []);
+
   const loadSnapshot = useCallback(async () => {
     if (selectedServerId === null || !target) return;
     try {
@@ -424,6 +760,17 @@ export default function TerminalsPage() {
     if (selectedServerId !== null) void loadHistory(selectedServerId);
   }, [selectedServerId, loadHistory]);
 
+  // Load the overview for whichever server/project the panel is showing.
+  useEffect(() => {
+    if (panelView.kind === "server") {
+      setServerOverview(null);
+      void loadServerOverview(panelView.serverId);
+    } else if (panelView.kind === "project") {
+      setProjectOverview(null);
+      void loadProjectOverview(panelView.projectId);
+    }
+  }, [panelView, loadServerOverview, loadProjectOverview]);
+
   // Auto-select the first available terminal when nothing is selected yet.
   useEffect(() => {
     if (selectedSessionName) return;
@@ -452,19 +799,19 @@ export default function TerminalsPage() {
     }
   }, [serverTrees, selectedServerId, selectedSessionName]);
 
-  // Poll only the active terminal.
+  // Poll only the active terminal, and only while the terminal panel is shown.
   useEffect(() => {
     if (pollRef.current) {
       window.clearInterval(pollRef.current);
       pollRef.current = null;
     }
-    if (!isLive || !target) return;
+    if (!isLive || !target || panelView.kind !== "terminal") return;
     void loadSnapshot();
     pollRef.current = window.setInterval(() => void loadSnapshot(), POLL_MS);
     return () => {
       if (pollRef.current) window.clearInterval(pollRef.current);
     };
-  }, [isLive, target, loadSnapshot]);
+  }, [isLive, target, loadSnapshot, panelView]);
 
   useEffect(() => {
     if (!target) {
@@ -631,15 +978,35 @@ export default function TerminalsPage() {
           <aside className="surface-card flex max-h-[38vh] min-h-0 flex-col overflow-hidden rounded-[24px] lg:max-h-none">
             <div className="flex items-center justify-between gap-2 border-b px-3 py-2.5" style={{ borderColor: "color-mix(in srgb, var(--card-border) 60%, transparent)" }}>
               <span className="text-sm font-semibold">Terminals</span>
-              <button
-                type="button"
-                onClick={() => void refreshAll()}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full border"
-                style={{ borderColor: softBorder, color: "var(--foreground-muted)" }}
-                title="Refresh list"
-              >
-                <RotateCw className={`h-3.5 w-3.5 ${treesLoading ? "animate-spin" : ""}`} aria-hidden="true" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={collapseAll}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border"
+                  style={{ borderColor: softBorder, color: "var(--foreground-muted)" }}
+                  title="Collapse all"
+                >
+                  <ChevronsDownUp className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  onClick={expandAll}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border"
+                  style={{ borderColor: softBorder, color: "var(--foreground-muted)" }}
+                  title="Expand all"
+                >
+                  <ChevronsUpDown className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void refreshAll()}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border"
+                  style={{ borderColor: softBorder, color: "var(--foreground-muted)" }}
+                  title="Refresh list"
+                >
+                  <RotateCw className={`h-3.5 w-3.5 ${treesLoading ? "animate-spin" : ""}`} aria-hidden="true" />
+                </button>
+              </div>
             </div>
 
             <div className="min-h-0 flex-1 overflow-auto px-1.5 py-2">
@@ -652,20 +1019,28 @@ export default function TerminalsPage() {
                 return (
                   <div key={server.id} className="mb-0.5">
                     {/* Server row */}
-                    <div className="flex items-center gap-1 rounded-lg px-1 py-1">
+                    <div className="group flex items-center gap-1 rounded-lg px-1 py-1">
                       <button type="button" onClick={() => toggleNode(srvKey)} className="inline-flex h-5 w-5 shrink-0 items-center justify-center" title={srvCollapsed ? "Expand" : "Collapse"}>
                         {srvCollapsed ? <ChevronRight className="h-3.5 w-3.5" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" /> : <ChevronDown className="h-3.5 w-3.5" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" />}
                       </button>
                       <ServerIcon className="h-4 w-4 shrink-0" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" />
-                      <span className="min-w-0 flex-1 truncate text-sm font-semibold" title={`${server.name} · ${server.host}`}>{server.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => showServerOverview(server.id)}
+                        className="min-w-0 flex-1 truncate rounded px-1 py-0.5 text-left text-sm font-semibold"
+                        title={`${server.name} · ${server.host}`}
+                        style={panelView.kind === "server" && panelView.serverId === server.id ? { color: "var(--accent)" } : undefined}
+                      >
+                        {server.name}
+                      </button>
                       <button
                         type="button"
                         onClick={() => openTerminalForServer(server)}
-                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border"
+                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
                         style={{ borderColor: softBorder, color: "var(--foreground-muted)" }}
                         title={`New terminal on ${server.name} (home directory)`}
                       >
-                        <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                        <Terminal className="h-3.5 w-3.5" aria-hidden="true" />
                       </button>
                     </div>
 
@@ -673,9 +1048,9 @@ export default function TerminalsPage() {
                       error ? (
                         <p className="px-2 py-1.5 pl-8 text-xs" style={{ color: "var(--danger)" }}>{error}</p>
                       ) : groups.length === 0 ? (
-                        <p className="px-2 py-1.5 pl-8 text-xs" style={{ color: "var(--foreground-muted)" }}>
-                          {treesLoading ? "Loading…" : "No terminals here."}
-                        </p>
+                        treesLoading ? (
+                          <p className="px-2 py-1.5 pl-8 text-xs" style={{ color: "var(--foreground-muted)" }}>Loading…</p>
+                        ) : null
                       ) : (
                         groups.map((group) => {
                           const groupKey = `${srvKey}/${group.key}`;
@@ -683,33 +1058,38 @@ export default function TerminalsPage() {
                           return (
                             <div key={groupKey}>
                               {/* Project row */}
-                              <div className="flex items-center gap-1 rounded-lg py-1 pl-6 pr-1">
+                              <div className="group flex items-center gap-1 rounded-lg py-1 pl-6 pr-1">
                                 <button type="button" onClick={() => toggleNode(groupKey)} className="inline-flex h-5 w-5 shrink-0 items-center justify-center" title={groupCollapsed ? "Expand" : "Collapse"}>
                                   {groupCollapsed ? <ChevronRight className="h-3.5 w-3.5" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" /> : <ChevronDown className="h-3.5 w-3.5" style={{ color: "var(--foreground-muted)" }} aria-hidden="true" />}
                                 </button>
                                 {group.project ? (
                                   <FolderGit2 className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--accent)" }} aria-hidden="true" />
                                 ) : null}
-                                <span className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--foreground-muted)" }}>{group.label}</span>
-                                <span className="shrink-0 text-[10px]" style={{ color: "var(--foreground-muted)" }}>{group.panes.length}</span>
+                                {group.project ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => showProjectOverview(group.project!.id)}
+                                    className="min-w-0 flex-1 truncate rounded px-1 py-0.5 text-left text-[11px] font-semibold uppercase tracking-wide"
+                                    title={`${group.project.name} overview`}
+                                    style={{ color: panelView.kind === "project" && panelView.projectId === group.project.id ? "var(--accent)" : "var(--foreground-muted)" }}
+                                  >
+                                    {group.label}
+                                  </button>
+                                ) : (
+                                  <span className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--foreground-muted)" }}>{group.label}</span>
+                                )}
                                 {group.project ? (
                                   <button
                                     type="button"
                                     onClick={() => openTerminalForProject(group.project!)}
-                                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border"
+                                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
                                     style={{ borderColor: softBorder, color: "var(--foreground-muted)" }}
                                     title={`New terminal in ${group.project.name}${group.project.root_path ? ` (${group.project.root_path})` : ""}`}
                                   >
-                                    <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                                    <Terminal className="h-3.5 w-3.5" aria-hidden="true" />
                                   </button>
                                 ) : null}
                               </div>
-
-                              {!groupCollapsed && group.panes.length === 0 ? (
-                                <p className="py-1 pl-12 pr-2 text-[11px]" style={{ color: "var(--foreground-muted)" }}>
-                                  {group.project ? "No terminals yet — use +" : "No terminals."}
-                                </p>
-                              ) : null}
 
                               {!groupCollapsed
                                 ? group.panes.map((ref) => {
@@ -720,16 +1100,18 @@ export default function TerminalsPage() {
                                         type="button"
                                         onClick={() => selectPane(server.id, ref.session.name, ref.win.index, ref.pane.index)}
                                         title={`${ref.target} · ${timeAgo(ref.session.activity)}`}
-                                        className="flex w-full items-center gap-1.5 rounded-lg py-1.5 pl-12 pr-2 text-left transition"
+                                        className="flex w-full items-start gap-1.5 rounded-lg py-1.5 pl-12 pr-2 text-left transition"
                                         style={active ? { backgroundColor: "var(--accent-tint)", color: "var(--accent)" } : { color: "var(--foreground)" }}
                                       >
                                         <span
-                                          className="h-1.5 w-1.5 shrink-0 rounded-full"
+                                          className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full"
                                           style={{ backgroundColor: ref.session.attached ? "var(--success)" : "color-mix(in srgb, var(--foreground-muted) 45%, transparent)" }}
                                           aria-hidden="true"
                                         />
-                                        <span className="min-w-0 flex-1 truncate font-mono text-xs">{ref.label}</span>
-                                        <CommandBadge command={ref.pane.command} />
+                                        <span className="flex min-w-0 flex-1 flex-col">
+                                          <span className="truncate text-xs" title={ref.label}>{ref.label}</span>
+                                          <span className="truncate font-mono text-[10px]" style={{ color: "var(--foreground-muted)" }}>{ref.pane.command || "?"}</span>
+                                        </span>
                                       </button>
                                     );
                                   })
@@ -745,6 +1127,8 @@ export default function TerminalsPage() {
             </div>
           </aside>
 
+          {panelView.kind === "terminal" ? (
+            <>
           {/* Terminal */}
           <section className="surface-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[24px]">
             {selectedSession && target ? (
@@ -972,6 +1356,24 @@ export default function TerminalsPage() {
               )}
             </div>
           </aside>
+            </>
+          ) : panelView.kind === "server" ? (
+            <ServerOverviewPanel
+              server={servers.find((s) => s.id === panelView.serverId) ?? null}
+              overview={serverOverview}
+              loading={overviewLoading}
+              error={overviewError}
+              onRefresh={() => panelView.kind === "server" && void loadServerOverview(panelView.serverId)}
+            />
+          ) : (
+            <ProjectOverviewPanel
+              project={projects.find((p) => p.id === panelView.projectId) ?? null}
+              overview={projectOverview}
+              loading={overviewLoading}
+              error={overviewError}
+              onRefresh={() => panelView.kind === "project" && void loadProjectOverview(panelView.projectId)}
+            />
+          )}
         </div>
       )}
     </div>

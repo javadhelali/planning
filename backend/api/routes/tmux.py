@@ -21,6 +21,7 @@ class PaneModel(BaseModel):
     index: int
     active: bool
     command: str
+    title: str = ""
     current_path: str = ""
 
 
