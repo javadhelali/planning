@@ -34,6 +34,7 @@ class ServerResponse(BaseModel):
     port: int
     username: str | None
     key_path: str | None
+    command: str | None
     position: int
     created_at: datetime
     updated_at: datetime
@@ -45,6 +46,9 @@ class ServerCreateRequest(BaseModel):
     port: int = Field(default=22, ge=1, le=65535)
     username: str | None = Field(default=None, max_length=255)
     key_path: str | None = Field(default=None, max_length=1024)
+    # How to launch Claude Code on this server. Blank = fall back to the global
+    # default (`claudep`). Some hosts need a different alias, e.g. `cc`.
+    command: str | None = Field(default=None, max_length=255)
 
 
 class ServerUpdateRequest(ServerCreateRequest):
@@ -121,6 +125,7 @@ async def create_server_route(
         port=payload.port,
         username=normalized_optional_text(payload.username),
         key_path=normalized_optional_text(payload.key_path),
+        command=normalized_optional_text(payload.command),
     )
     if server is None:
         raise HTTPException(status_code=500, detail="Failed to create server")
@@ -148,6 +153,7 @@ async def update_server_route(
         port=payload.port,
         username=normalized_optional_text(payload.username),
         key_path=normalized_optional_text(payload.key_path),
+        command=normalized_optional_text(payload.command),
         position=payload.position,
     )
     if server is None:

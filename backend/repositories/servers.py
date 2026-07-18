@@ -9,6 +9,7 @@ host,
 port,
 username,
 key_path,
+command,
 position,
 created_at,
 updated_at
@@ -73,6 +74,7 @@ async def create_server(
     port: int,
     username: str | None,
     key_path: str | None,
+    command: str | None,
 ) -> dict | None:
     query = f"""
         with next_pos as (
@@ -81,14 +83,14 @@ async def create_server(
             where user_id = $1
         ),
         inserted as (
-            insert into servers (user_id, name, host, port, username, key_path, position)
-            select $1, $2, $3, $4, $5, $6, next_pos.position
+            insert into servers (user_id, name, host, port, username, key_path, command, position)
+            select $1, $2, $3, $4, $5, $6, $7, next_pos.position
             from next_pos
             returning {SERVER_COLUMNS}
         )
         select * from inserted
     """
-    rows = await db.execute(query, user_id, name, host, port, username, key_path)
+    rows = await db.execute(query, user_id, name, host, port, username, key_path, command)
     if not rows:
         return None
     return rows[0]
@@ -102,6 +104,7 @@ async def update_server(
     port: int,
     username: str | None,
     key_path: str | None,
+    command: str | None,
     position: int,
 ) -> dict | None:
     query = f"""
@@ -112,13 +115,14 @@ async def update_server(
             port = $5,
             username = $6,
             key_path = $7,
-            position = greatest(1, $8),
+            command = $8,
+            position = greatest(1, $9),
             updated_at = now()
         where id = $1
           and user_id = $2
         returning {SERVER_COLUMNS}
     """
-    rows = await db.execute(query, server_id, user_id, name, host, port, username, key_path, position)
+    rows = await db.execute(query, server_id, user_id, name, host, port, username, key_path, command, position)
     if not rows:
         return None
     return rows[0]

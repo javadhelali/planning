@@ -9,6 +9,7 @@ import {
   CornerDownLeft,
   Eraser,
   History,
+  Keyboard,
   Loader2,
   RotateCw,
   Send,
@@ -192,6 +193,9 @@ export default function AgentPanel({
   const [heard, setHeard] = useState("");
   const [heardLanguage, setHeardLanguage] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
+  // The static nav keys are power-user tools — on mobile they hide behind a
+  // keyboard toggle so the terminal keeps the height. Desktop always shows them.
+  const [keysOpen, setKeysOpen] = useState(false);
 
   // Follow Claude's output as it streams in.
   useEffect(() => {
@@ -250,8 +254,8 @@ export default function AgentPanel({
     <section className="surface-card flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[24px]">
       <div className="flex items-center gap-2 border-b px-4 py-2.5" style={panelHeaderBorder}>
         <Bot className="h-4 w-4 shrink-0" style={{ color: "var(--accent)" }} aria-hidden="true" />
-        <span className="shrink-0 text-sm font-semibold">{title}</span>
-        <span className="min-w-0 truncate font-mono text-xs" style={{ color: "var(--foreground-muted)" }}>{subtitle}</span>
+        <span className="hidden shrink-0 text-sm font-semibold lg:inline">{title}</span>
+        <span className="hidden min-w-0 truncate font-mono text-xs lg:inline" style={{ color: "var(--foreground-muted)" }}>{subtitle}</span>
 
         <span
           className="ml-auto shrink-0 rounded-full px-2 py-0.5 font-mono text-[10px]"
@@ -269,7 +273,7 @@ export default function AgentPanel({
             type="button"
             onClick={onLoadMore}
             disabled={!canLoadMore}
-            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border px-2.5 text-xs font-medium disabled:opacity-40"
+            className="hidden h-8 shrink-0 items-center gap-1 rounded-full border px-2.5 text-xs font-medium disabled:opacity-40 sm:inline-flex"
             style={{ borderColor: softBorder, color: "var(--foreground-muted)" }}
             title="Show more of Claude's history"
           >
@@ -319,7 +323,7 @@ export default function AgentPanel({
       {/* Keys for driving the agent's pane directly. When Claude prints a
           numbered menu, its options show up here as taps. */}
       {target ? (
-        <div className="no-scrollbar flex items-center gap-1.5 overflow-x-auto border-t px-4 pt-3" style={panelHeaderBorder}>
+        <div className={`no-scrollbar items-center gap-1.5 overflow-x-auto border-t px-4 pt-3 lg:flex ${keysOpen || choices.length > 0 ? "flex" : "hidden"}`} style={panelHeaderBorder}>
           {choices.length > 0 ? (
             <>
               <span className="mr-0.5 shrink-0 text-[11px] font-semibold" style={{ color: "var(--accent)" }}>
@@ -431,6 +435,23 @@ export default function AgentPanel({
               grows into the empty middle — Send stays put and the left controls
               never budge. Every control is h-9, so nothing can misalign. */}
           <div className="flex flex-wrap items-center gap-2 px-3 pb-3 pt-2">
+            {target ? (
+              <button
+                type="button"
+                onClick={() => setKeysOpen((value) => !value)}
+                aria-pressed={keysOpen}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition lg:hidden"
+                style={
+                  keysOpen
+                    ? { borderColor: "var(--accent)", backgroundColor: "var(--accent-tint)", color: "var(--accent)" }
+                    : { borderColor: softBorder, color: "var(--foreground-muted)" }
+                }
+                title={keysOpen ? "Hide terminal keys" : "Show terminal keys (Enter, Esc, arrows…)"}
+              >
+                <Keyboard className="h-4 w-4" aria-hidden="true" />
+              </button>
+            ) : null}
+
             <ModelMenu models={models} value={model} onChange={onModelChange} />
 
             <button

@@ -85,6 +85,7 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
   const [serverPort, setServerPort] = useState("22");
   const [serverUsername, setServerUsername] = useState("");
   const [serverKeyPath, setServerKeyPath] = useState("");
+  const [serverCommand, setServerCommand] = useState("");
   const [serverPosition, setServerPosition] = useState("");
   const [serverSubmitting, setServerSubmitting] = useState(false);
   const [pendingDeleteServer, setPendingDeleteServer] = useState<WorkspaceServer | null>(null);
@@ -165,15 +166,17 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
     return map;
   }, [projects]);
 
+  const openTree = useCallback(() => setMobileOpen(true), []);
+
   // --- modal openers --------------------------------------------------------
 
   const openCreateServer = useCallback(() => {
-    setServerName(""); setServerHost(""); setServerPort("22"); setServerUsername(""); setServerKeyPath("");
+    setServerName(""); setServerHost(""); setServerPort("22"); setServerUsername(""); setServerKeyPath(""); setServerCommand("");
     setServerModal({ mode: "create" });
   }, []);
   const openEditServer = useCallback((server: WorkspaceServer) => {
     setServerName(server.name); setServerHost(server.host); setServerPort(String(server.port));
-    setServerUsername(server.username ?? ""); setServerKeyPath(server.key_path ?? "");
+    setServerUsername(server.username ?? ""); setServerKeyPath(server.key_path ?? ""); setServerCommand(server.command ?? "");
     setServerPosition(String(server.position));
     setServerModal({ mode: "edit", server });
   }, []);
@@ -200,6 +203,7 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
       port: Number.parseInt(serverPort, 10) || 22,
       username: serverUsername.trim() || null,
       key_path: serverKeyPath.trim() || null,
+      command: serverCommand.trim() || null,
     };
     setServerSubmitting(true);
     try {
@@ -286,6 +290,7 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
       getProjectBySlug: (slug: string) => projects.find((p) => p.slug === slug) ?? null,
       getServer: (id: number) => servers.find((s) => s.id === id) ?? null,
       pushToast,
+      openTree,
       openCreateServer,
       openEditServer,
       promptDeleteServer: setPendingDeleteServer,
@@ -293,7 +298,7 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
       openEditProject,
       promptDeleteProject: setPendingDeleteProject,
     }),
-    [servers, projects, agentModels, loading, error, refresh, pushToast, openCreateServer, openEditServer, openCreateProject, openEditProject],
+    [servers, projects, agentModels, loading, error, refresh, pushToast, openTree, openCreateServer, openEditServer, openCreateProject, openEditProject],
   );
 
   function toggleServer(id: number) {
@@ -402,9 +407,14 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
 
           {/* Main panel */}
           <div className="flex min-h-0 min-w-0 flex-col gap-2 sm:gap-3">
-            <button type="button" onClick={() => setMobileOpen(true)} className="inline-flex h-8 w-fit shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium lg:hidden" style={{ borderColor: softBorder, color: "var(--foreground-muted)" }}>
-              <ServerIcon className="h-3.5 w-3.5" aria-hidden="true" /> Browse
-            </button>
+            {/* Project detail pages carry their own Browse control in the context
+                bar, so the standalone row is only shown on the other workspace
+                pages (index, servers). */}
+            {/^\/projects\/.+/.test(pathname) ? null : (
+              <button type="button" onClick={() => setMobileOpen(true)} className="inline-flex h-8 w-fit shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium lg:hidden" style={{ borderColor: softBorder, color: "var(--foreground-muted)" }}>
+                <ServerIcon className="h-3.5 w-3.5" aria-hidden="true" /> Browse
+              </button>
+            )}
             {children}
           </div>
         </div>
@@ -434,6 +444,11 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
               <label htmlFor="server-key-path" className="text-sm font-semibold">Private key path</label>
               <input id="server-key-path" value={serverKeyPath} onChange={(e) => setServerKeyPath(e.target.value)} className="field mt-2 rounded-2xl px-4 py-3 text-sm" placeholder="~/.ssh/id_ed25519 (blank = default key)" />
               <p className="mt-1.5 text-xs" style={{ color: "var(--foreground-muted)" }}>Path on the backend machine. Leave blank to use the default SSH key.</p>
+            </div>
+            <div>
+              <label htmlFor="server-command" className="text-sm font-semibold">Claude command</label>
+              <input id="server-command" value={serverCommand} onChange={(e) => setServerCommand(e.target.value)} className="field mt-2 rounded-2xl px-4 py-3 text-sm" placeholder="claudep (blank = default)" />
+              <p className="mt-1.5 text-xs" style={{ color: "var(--foreground-muted)" }}>Command that launches Claude Code on this server. Leave blank to use the default (<code>claudep</code>); some hosts need a different alias (e.g. <code>cc</code>).</p>
             </div>
             {serverModal?.mode === "edit" ? (
               <div>

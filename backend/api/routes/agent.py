@@ -192,7 +192,7 @@ async def _unique_session_name(server: dict, base: str) -> str:
     return f"{name}-{index}"
 
 
-def _launch_command(model: str) -> str:
+def _launch_command(model: str, server: dict) -> str:
     """The shell command that starts Claude Code in a fresh pane.
 
     Wrapped in an interactive shell on purpose: the configured command is
@@ -200,8 +200,11 @@ def _launch_command(model: str) -> str:
     before running claude, and claude itself usually sits on an nvm PATH. Both of
     those come from ~/.zshrc — and tmux launches commands with `sh -c`, which
     sources nothing, so a bare `claude` is simply "not found".
+
+    Each server may override how Claude is launched (e.g. `cc` on the basalam
+    WSL box); a blank per-server command falls back to the global default.
     """
-    command = settings.agent_command
+    command = (server.get("command") or "").strip() or settings.agent_command
     if model:
         command = f"{command} --model {model}"
     return f"{settings.agent_shell} -ic {shlex.quote(command)}"
@@ -258,7 +261,7 @@ async def agent_run(payload: AgentRunRequest, user: dict = Depends(require_authe
         # No Claude here yet — open a terminal running it in the project root.
         base = root_path.rstrip("/").rsplit("/", 1)[-1] if root_path else (server.get("name") or "agent")
         name = await _unique_session_name(server, base)
-        result = await ssh.tmux_new_session(server, name, _launch_command(model), cwd=root_path)
+        result = await ssh.tmux_new_session(server, name, _launch_command(model, server), cwd=root_path)
         failure = _failed(result)
         if failure:
             return {"ok": False, "error": failure}

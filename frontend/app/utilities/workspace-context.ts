@@ -13,6 +13,7 @@ export type WorkspaceServer = {
   port: number;
   username: string | null;
   key_path: string | null;
+  command: string | null;
   position: number;
 };
 
@@ -43,6 +44,7 @@ export type WorkspaceContextValue = {
   getProjectBySlug: (slug: string) => WorkspaceProject | null;
   getServer: (id: number) => WorkspaceServer | null;
   pushToast: (type: ToastKind, message: string) => void;
+  openTree: () => void;
   openCreateServer: () => void;
   openEditServer: (server: WorkspaceServer) => void;
   promptDeleteServer: (server: WorkspaceServer) => void;
