@@ -10,3 +10,5 @@ redis
 socksio
 mcp
 asyncssh
+websockets>=15
+python-socks

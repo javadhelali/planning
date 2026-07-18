@@ -1,0 +1,35 @@
+# VCS / editor noise
+.git/
+.gitignore
+.dockerignore
+.vscode/
+.idea/
+.DS_Store
+
+# Environments and secrets. Production values are injected at runtime by
+# docker-compose (env_file: prod.env) — they must never be baked into the image.
+*.env
+!*.env.example
+
+# Dev-only launcher; the image runs uvicorn from the Dockerfile CMD.
+run.sh
+
+# Python bytecode and virtualenvs
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+.python-version
+
+# Test and tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Logs and local runtime artifacts
+logs/
+*.log

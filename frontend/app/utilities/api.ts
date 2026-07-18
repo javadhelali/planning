@@ -105,3 +105,15 @@ export async function patch(path: string, body: RequestBody) {
 export async function del(path: string) {
   return request(path, { method: "DELETE" });
 }
+
+// Build a ws:// or wss:// URL for a backend path. WebSocket handshakes can't
+// carry headers, so the session token travels as a query parameter.
+export function socketUrl(path: string, params: Record<string, string> = {}) {
+  if (typeof window === "undefined") return "";
+  const url = new URL(path, BASE_URL || window.location.origin);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  const token = getPlanningToken();
+  if (token) url.searchParams.set("token", token);
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+  return url.toString();
+}

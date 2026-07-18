@@ -22,6 +22,7 @@ type ActionMenuProps = {
   onToggle: (menuKey: string) => void;
   children: ReactNode;
   adaptiveDirection?: boolean;
+  className?: string;
 };
 
 export function ActionMenuButton({ title, isOpen, onClick }: ActionMenuButtonProps) {
@@ -84,6 +85,7 @@ export function ActionMenu({
   onToggle,
   children,
   adaptiveDirection = false,
+  className,
 }: ActionMenuProps) {
   const isOpen = openMenuKey === menuKey;
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -119,7 +121,7 @@ export function ActionMenu({
   }, [adaptiveDirection, isOpen]);
 
   return (
-    <div ref={rootRef} data-action-menu-root className="relative">
+    <div ref={rootRef} data-action-menu-root data-open={isOpen ? "true" : undefined} className={`relative ${className ?? ""}`}>
       <ActionMenuButton title="Open actions" isOpen={isOpen} onClick={() => onToggle(menuKey)} />
       {isOpen ? (
         <div

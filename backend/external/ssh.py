@@ -2,41 +2,149 @@
 
 All communication with remote servers goes through here. Authentication is
 public-key only: pass a private key path or fall back to the local default key.
-A fresh connection is opened per call — simple and stateless, which is the right
-trade-off for occasional agent-driven commands (not high-frequency polling).
+
+Connections are **pooled and reused** per server: the frontend polls
+`capture-pane` every ~1.2s, and dialing a fresh TCP + SSH + key-auth handshake
+each time (against a possibly-overseas host) is what made the terminals page
+feel slow. A warm connection turns each poll into a single channel open. Dead
+peers are detected via keepalives and transparently re-dialed.
 """
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shlex
 from typing import Any
 
 import asyncssh
 
-DEFAULT_KEY_PATH = "~/.ssh/id_ed25519"
+from config import settings
+
+# Keepalive so a silently-dropped peer is noticed and the pooled connection is
+# torn down (asyncssh raises on the next use) instead of hanging.
+_KEEPALIVE_INTERVAL = 15
+_KEEPALIVE_COUNT_MAX = 3
+
+# One live connection per (host, port, username, key), plus a per-key lock so
+# concurrent polls share a single dial instead of racing to open duplicates.
+_pool: dict[tuple[str, int, str | None, str], asyncssh.SSHClientConnection] = {}
+_locks: dict[tuple[str, int, str | None, str], asyncio.Lock] = {}
+
+
+def _resolve_key(key_path: str | None) -> str:
+    """The private key to authenticate with: the server's own, else the default.
+
+    The default is configurable because "~" is the *backend's* home — inside a
+    container that is /root, not the operator's home directory, so the key has to
+    be mounted in and pointed at explicitly (see SSH_KEY_PATH).
+    """
+    return os.path.expanduser(key_path or settings.ssh_key_path)
 
 
 def _client_keys(key_path: str | None) -> list[str]:
-    path = key_path or DEFAULT_KEY_PATH
-    return [os.path.expanduser(path)]
+    return [_resolve_key(key_path)]
+
+
+def _pool_key(server: dict[str, Any]) -> tuple[str, int, str | None, str]:
+    return (
+        server["host"],
+        server.get("port") or 22,
+        server.get("username") or None,
+        _resolve_key(server.get("key_path")),
+    )
+
+
+def _lock_for(key: tuple[str, int, str | None, str]) -> asyncio.Lock:
+    lock = _locks.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _locks[key] = lock
+    return lock
+
+
+async def _connect(server: dict[str, Any], timeout: int) -> asyncssh.SSHClientConnection:
+    return await asyncssh.connect(
+        host=server["host"],
+        port=server.get("port") or 22,
+        username=server.get("username") or None,
+        client_keys=_client_keys(server.get("key_path")),
+        known_hosts=None,  # host-key pinning is a later hardening step
+        connect_timeout=timeout,
+        keepalive_interval=_KEEPALIVE_INTERVAL,
+        keepalive_count_max=_KEEPALIVE_COUNT_MAX,
+    )
+
+
+async def _get_connection(server: dict[str, Any], timeout: int) -> asyncssh.SSHClientConnection:
+    """Return a pooled, healthy connection for this server, dialing if needed."""
+    key = _pool_key(server)
+    async with _lock_for(key):
+        conn = _pool.get(key)
+        if conn is not None and not conn.is_closed():
+            return conn
+        # No connection, or a stale/closed one — (re)dial and cache it.
+        _pool.pop(key, None)
+        conn = await _connect(server, timeout)
+        _pool[key] = conn
+        return conn
+
+
+def _evict(server: dict[str, Any]) -> None:
+    key = _pool_key(server)
+    conn = _pool.pop(key, None)
+    if conn is not None:
+        conn.abort()
+
+
+async def close_all() -> None:
+    """Tear down every pooled connection (call on app shutdown)."""
+    conns = list(_pool.values())
+    _pool.clear()
+    for conn in conns:
+        conn.abort()
+    for conn in conns:
+        try:
+            await conn.wait_closed()
+        except (OSError, asyncssh.Error):
+            pass
+
+
+def remote_path(path: str) -> str:
+    """Shell-safe path that still lets a leading ~ expand on the remote host."""
+    path = path.strip()
+    if path == "~":
+        return "$HOME"
+    if path.startswith("~/"):
+        return '"$HOME"/' + shlex.quote(path[2:])
+    return shlex.quote(path)
 
 
 async def run_command(server: dict[str, Any], command: str, timeout: int = 30) -> dict[str, Any]:
-    """Run an arbitrary shell command on a server.
+    """Run an arbitrary shell command on a server over a pooled SSH connection.
 
     `server` needs: host, port, username (optional), key_path (optional).
     Returns {ok, exit_status, stdout, stderr} or {ok: False, error} on failure.
+    Reuses a warm connection; if it turns out to be dead, evicts it and re-dials
+    once so a transient drop doesn't surface as an error.
     """
-    try:
-        async with asyncssh.connect(
-            host=server["host"],
-            port=server.get("port") or 22,
-            username=server.get("username") or None,
-            client_keys=_client_keys(server.get("key_path")),
-            known_hosts=None,  # host-key pinning is a later hardening step
-            connect_timeout=timeout,
-        ) as conn:
+    key = _resolve_key(server.get("key_path"))
+    if not os.path.isfile(key):
+        # asyncssh would raise a bare FileNotFoundError here, which tells the
+        # operator nothing. Name the path and the setting that controls it.
+        return {
+            "ok": False,
+            "error": (
+                f"SSH key not found at {key}. Mount the key into the backend and point "
+                f"SSH_KEY_PATH at it (or set the server's key_path)."
+            ),
+        }
+
+    last_exc: Exception | None = None
+    # Attempt on the pooled connection; on failure evict and dial fresh once.
+    for attempt in range(2):
+        try:
+            conn = await _get_connection(server, timeout)
             result = await conn.run(command, check=False, timeout=timeout)
             return {
                 "ok": True,
@@ -44,8 +152,10 @@ async def run_command(server: dict[str, Any], command: str, timeout: int = 30) -
                 "stdout": result.stdout or "",
                 "stderr": result.stderr or "",
             }
-    except (OSError, asyncssh.Error, TimeoutError) as exc:
-        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+        except (OSError, asyncssh.Error, TimeoutError) as exc:
+            last_exc = exc
+            _evict(server)
+    return {"ok": False, "error": f"{type(last_exc).__name__}: {last_exc}"}
 
 
 # ---- tmux helpers -----------------------------------------------------------
@@ -68,7 +178,7 @@ async def tmux_new_session(
     """
     parts = ["tmux", "new-session", "-d", "-s", shlex.quote(session), "-x", str(width), "-y", str(height)]
     if cwd:
-        parts += ["-c", shlex.quote(cwd)]
+        parts += ["-c", remote_path(cwd)]
     if command:
         parts.append(shlex.quote(command))
     return await run_command(server, " ".join(parts))

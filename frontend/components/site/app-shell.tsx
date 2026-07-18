@@ -51,9 +51,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/missions", label: "Missions", description: "Mission map", icon: "missions" },
   { href: "/okrs", label: "OKRs", description: "Goal tracking", icon: "okrs" },
   { href: "/glossary", label: "Glossary", description: "Term mastery", icon: "glossary" },
-  { href: "/servers", label: "Servers", description: "SSH machines", icon: "servers" },
-  { href: "/projects", label: "Projects", description: "Codebases", icon: "projects" },
-  { href: "/terminals", label: "Terminals", description: "tmux panels", icon: "terminals" },
+  { href: "/projects", label: "Projects", description: "Servers, terminals & AI", icon: "projects" },
   { href: "/activity", label: "Activity", description: "Timeline", icon: "activity" },
   { href: "/admin", label: "Admin", description: "Workspace controls", icon: "admin" },
 ];
@@ -350,7 +348,7 @@ export default function AppShell({ children }: AppShellProps) {
         </aside>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <header className="shrink-0 px-4 py-4 sm:px-6">
+          <header className="shrink-0 px-4 py-3 sm:px-6 sm:py-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
                 <button
@@ -378,7 +376,7 @@ export default function AppShell({ children }: AppShellProps) {
             </div>
           </header>
 
-          <main className="app-scroll min-h-0 min-w-0 flex-1 overflow-y-auto px-4 pb-6 sm:px-6">{children}</main>
+          <main className="app-scroll min-h-0 min-w-0 flex-1 overflow-y-auto px-4 pb-4 sm:px-6 sm:pb-6">{children}</main>
         </div>
       </div>
     </div>

@@ -1,4 +1,23 @@
-**/__pycache__
-*.pyc
-*.python-version
-.venv
+# Secrets: dev.env and prod.env are local-only and must never be committed.
+*.env
+!*.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.python-version
+
+# Test and tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Logs
+logs/
+*.log
+.DS_Store

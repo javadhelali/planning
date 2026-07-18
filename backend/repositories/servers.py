@@ -76,7 +76,7 @@ async def create_server(
 ) -> dict | None:
     query = f"""
         with next_pos as (
-            select coalesce(max(position), 0) + 1 as position
+            select coalesce(max(position), 0) + 100 as position
             from servers
             where user_id = $1
         ),

@@ -435,3 +435,78 @@ a {
     transform: translateY(0);
   }
 }
+
+/* Prompt composer. Focus is a whisper, not a shout: the border warms slightly
+   and a soft halo appears — no hard ring around the whole card. */
+.composer {
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.composer:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+/* The controls inside the composer sit on the card itself, so their own focus
+   rings would stack on top of its halo. */
+.composer textarea:focus-visible {
+  outline: none;
+}
+
+/* Row-hover affordance: the per-item action controls (⋮ menu, quick add) in the
+   workspace tree stay out of the way until you hover or focus the row, so the
+   list reads cleanly instead of being peppered with buttons. On touch devices
+   (no hover) they stay visible, since there's no hover to reveal them. */
+.row-action {
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .row-action {
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+
+  .group:hover .row-action,
+  .group:focus-within .row-action,
+  .row-action:focus-within,
+  .row-action[data-open="true"] {
+    opacity: 1;
+  }
+}
+
+/* Scrolls, but without the scrollbar chrome — for short live-updating strips
+   that stay pinned to their newest content. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Live voice-recording meter. Bar heights are driven from the microphone's
+   analyser node in JS; the transition just smooths the frame-to-frame jitter. */
+.voice-bar {
+  transform-origin: center;
+  transition: transform 70ms linear;
+  will-change: transform;
+}
+
+/* Fallback when the Web Audio analyser isn't available: keep the bars alive so
+   the control still reads as "recording". */
+.voice-bar-idle {
+  animation: voice-bar 900ms ease-in-out infinite;
+}
+
+@keyframes voice-bar {
+  0%,
+  100% {
+    transform: scaleY(0.3);
+  }
+
+  50% {
+    transform: scaleY(1);
+  }
+}

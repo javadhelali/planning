@@ -1,6 +1,13 @@
+# Postgres access for /app/code/planning (query + structural changes).
 [mcp_servers.postgres]
-command = "bash"
-args = ["backend/MCP/run_postgres_mcp.sh"]
+command = "/app/code/planning/backend/mcps/postgres.sh"
 
-[mcp_servers.postgres.tools.run_query]
+[mcp_servers.postgres.tools.run_fetch]
 approval_mode = "approve"
+
+[mcp_servers.postgres.tools.run_execute]
+approval_mode = "approve"
+
+# SSH + tmux control over the servers defined in the planning database.
+[mcp_servers.servers]
+command = "/app/code/planning/backend/mcps/servers.sh"

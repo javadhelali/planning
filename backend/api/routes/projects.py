@@ -56,6 +56,7 @@ class ProjectResponse(BaseModel):
     user_id: int
     server_id: int | None
     name: str
+    slug: str
     description: str | None
     kind: ProjectKind
     root_path: str | None
@@ -172,6 +173,14 @@ async def delete_server_route(server_id: int, user: dict = Depends(require_authe
 @router.get("/projects", response_model=list[ProjectResponse])
 async def get_projects(user: dict = Depends(require_authenticated_user)):
     return await list_projects(user["id"])
+
+
+@router.get("/projects/{project_id}", response_model=ProjectResponse)
+async def get_project_route(project_id: int, user: dict = Depends(require_authenticated_user)):
+    project = await get_project(project_id, user["id"])
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
 
 
 @router.post("/projects", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)

@@ -6,9 +6,6 @@ Project overview: the repo's AGENTS.md (if present) and its changed files
 SSH round-trip per resource, then parsed here in the route layer.
 """
 
-import shlex
-from typing import Any
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -27,6 +24,7 @@ class ServiceInfo(BaseModel):
     name: str
     state: str = ""
     description: str = ""
+    scope: str = "system"  # "system" or "user"
 
 
 class DiskInfo(BaseModel):
@@ -87,7 +85,7 @@ def _split_sections(text: str, markers: list[str]) -> dict[str, list[str]]:
     return sections
 
 
-def _parse_services(lines: list[str]) -> list[ServiceInfo]:
+def _parse_services(lines: list[str], scope: str) -> list[ServiceInfo]:
     services: list[ServiceInfo] = []
     for line in lines:
         parts = line.split(maxsplit=4)
@@ -98,6 +96,7 @@ def _parse_services(lines: list[str]) -> list[ServiceInfo]:
                 name=parts[0].removesuffix(".service"),
                 state=parts[3],
                 description=parts[4] if len(parts) > 4 else "",
+                scope=scope,
             )
         )
     return services
@@ -144,35 +143,31 @@ def _parse_status(lines: list[str]) -> list[ChangedFile]:
     return files
 
 
-def _remote_path(path: str) -> str:
-    """Shell-safe path that still lets a leading ~ expand on the remote."""
-    path = path.strip()
-    if path == "~":
-        return "$HOME"
-    if path.startswith("~/"):
-        return '"$HOME"/' + shlex.quote(path[2:])
-    return shlex.quote(path)
-
-
 # --- routes ------------------------------------------------------------------
 
 
 @router.get("/servers/{server_id}/overview", response_model=ServerOverviewResponse)
 async def server_overview(server_id: int, user: dict = Depends(require_authenticated_user)):
     server = await _require_server(server_id, user)
+    services_cmd = "list-units --type=service --state=running --no-legend --plain --no-pager"
     command = (
-        'echo "===SERVICES==="; '
-        "systemctl list-units --type=service --state=running --no-legend --plain --no-pager 2>/dev/null; "
+        f'echo "===SERVICES==="; systemctl {services_cmd} 2>/dev/null; '
+        f'echo "===USERSERVICES==="; systemctl --user {services_cmd} 2>/dev/null; '
         'echo "===CRON==="; crontab -l 2>/dev/null; '
         'echo "===DISK==="; df -hP 2>/dev/null'
     )
     result = await ssh.run_command(server, command)
     if not result.get("ok"):
         return {"ok": False, "error": result.get("error")}
-    sections = _split_sections(result.get("stdout") or "", ["===SERVICES===", "===CRON===", "===DISK==="])
+    sections = _split_sections(
+        result.get("stdout") or "",
+        ["===SERVICES===", "===USERSERVICES===", "===CRON===", "===DISK==="],
+    )
+    services = _parse_services(sections["===SERVICES==="], "system")
+    services += _parse_services(sections["===USERSERVICES==="], "user")
     return {
         "ok": True,
-        "services": _parse_services(sections["===SERVICES==="]),
+        "services": services,
         "cronjobs": _parse_cron(sections["===CRON==="]),
         "disk": _parse_disk(sections["===DISK==="]),
     }
@@ -190,7 +185,7 @@ async def project_overview(project_id: int, user: dict = Depends(require_authent
         return {"ok": True, "has_root": False, "is_git": False, "agents_md": None, "changed_files": []}
 
     server = await _require_server(server_id, user)
-    rp = _remote_path(root_path)
+    rp = ssh.remote_path(root_path)
     command = (
         f'echo "===GIT==="; git -C {rp} rev-parse --is-inside-work-tree 2>/dev/null; '
         f'echo "===AGENTS==="; cat {rp}/AGENTS.md 2>/dev/null; '
